@@ -1,7 +1,26 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Allow admin users (authenticated) to read and write bookings
+    match /bookings/{bookingId} {
+      allow read, write: if request.auth != null;
+      // Add more granular rules as needed, e.g., based on user roles
+    }
+
+    // Example: Allow admin users to read and write restaurant schedule
+    // match /config/schedule {
+    //   allow read, write: if request.auth != null;
+    // }
+
+    // Example: Allow admin users to read and write reservation settings
+    // match /config/reservationSettings {
+    //   allow read, write: if request.auth != null;
+    // }
+
+    // Default deny all other access
     match /{document=**} {
       allow read, write: if false;
     }

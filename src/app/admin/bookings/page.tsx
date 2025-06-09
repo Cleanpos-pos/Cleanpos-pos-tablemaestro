@@ -1,13 +1,14 @@
+
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Filter, Edit3, Trash2, MoreHorizontal, PlusCircle, FileDown } from "lucide-react";
+import { Search, Filter, Edit3, Trash2, MoreHorizontal, PlusCircle, FileDown, Loader2 } from "lucide-react";
 import type { Booking } from "@/lib/types";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -20,25 +21,38 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-
-// Mock data - replace with actual data fetching
-const initialBookings: Booking[] = [
-  { id: "1", guestName: "Alice Wonderland", date: "2024-07-20", time: "19:00", partySize: 2, status: "confirmed", createdAt: new Date().toISOString() },
-  { id: "2", guestName: "Bob The Builder", date: "2024-07-20", time: "20:30", partySize: 4, status: "pending", createdAt: new Date().toISOString() },
-  { id: "3", guestName: "Charlie Chaplin", date: "2024-07-21", time: "18:00", partySize: 3, status: "seated", createdAt: new Date().toISOString() },
-  { id: "4", guestName: "Diana Prince", date: "2024-07-21", time: "21:00", partySize: 2, status: "completed", createdAt: new Date().toISOString() },
-  { id: "5", guestName: "Edward Scissorhands", date: "2024-07-22", time: "19:30", partySize: 1, status: "cancelled", createdAt: new Date().toISOString() },
-];
+import { getBookings, deleteBookingFromFirestore } from "@/services/bookingService";
 
 export default function BookingManagementPage() {
-  const [bookings, setBookings] = useState<Booking[]>(initialBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<Booking['status'][]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState<Booking | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      setIsLoading(true);
+      try {
+        const firestoreBookings = await getBookings();
+        setBookings(firestoreBookings);
+      } catch (error) {
+        console.error("Failed to fetch bookings:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load bookings. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBookings();
+  }, [toast]);
 
   const filteredBookings = useMemo(() => {
     return bookings
@@ -49,7 +63,12 @@ export default function BookingManagementPage() {
       .filter((booking) =>
         statusFilter.length === 0 || statusFilter.includes(booking.status)
       )
-      .sort((a, b) => new Date(a.date + 'T' + a.time).getTime() - new Date(b.date + 'T' + b.time).getTime());
+      .sort((a, b) => {
+         // Ensure date and time are valid before creating Date objects
+        const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
+        const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
+        return dateA.getTime() - dateB.getTime();
+      });
   }, [bookings, searchTerm, statusFilter]);
 
   const handleStatusFilterChange = (status: Booking['status']) => {
@@ -60,13 +79,24 @@ export default function BookingManagementPage() {
     );
   };
   
-  const handleDeleteBooking = () => {
+  const handleDeleteBooking = async () => {
     if (bookingToDelete) {
-      setBookings(prev => prev.filter(b => b.id !== bookingToDelete.id));
-      toast({ title: "Booking Deleted", description: `Booking for ${bookingToDelete.guestName} has been deleted.`});
-      setBookingToDelete(null);
+      try {
+        await deleteBookingFromFirestore(bookingToDelete.id);
+        setBookings(prev => prev.filter(b => b.id !== bookingToDelete.id));
+        toast({ title: "Booking Deleted", description: `Booking for ${bookingToDelete.guestName} has been deleted.`});
+      } catch (error) {
+        console.error("Failed to delete booking:", error);
+        toast({
+          title: "Error",
+          description: "Failed to delete booking. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setBookingToDelete(null);
+        setIsDeleteDialogOpen(false);
+      }
     }
-    setIsDeleteDialogOpen(false);
   };
 
   const openDeleteDialog = (booking: Booking) => {
@@ -87,7 +117,7 @@ export default function BookingManagementPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-headline text-foreground">Booking Management</h1>
         <div className="flex gap-2">
-          <Link href="/admin/bookings/new" passHref> {/* Placeholder for new booking page */}
+          <Link href="/admin/bookings/new" passHref>
             <Button className="btn-subtle-animate bg-primary hover:bg-primary/90 text-primary-foreground">
               <PlusCircle className="mr-2 h-4 w-4" /> New Booking
             </Button>
@@ -136,63 +166,70 @@ export default function BookingManagementPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="font-body">Guest Name</TableHead>
-                <TableHead className="font-body">Date & Time</TableHead>
-                <TableHead className="font-body text-center">Party Size</TableHead>
-                <TableHead className="font-body text-center">Status</TableHead>
-                <TableHead className="font-body text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredBookings.length > 0 ? (
-                filteredBookings.map((booking) => (
-                  <TableRow key={booking.id}>
-                    <TableCell className="font-medium font-body">{booking.guestName}</TableCell>
-                    <TableCell className="font-body">
-                      {format(new Date(booking.date + 'T00:00:00'), "MMM d, yyyy")} at {booking.time}
-                    </TableCell>
-                    <TableCell className="text-center font-body">{booking.partySize}</TableCell>
-                    <TableCell className="text-center font-body">
-                      <Badge className={`${statusColors[booking.status]} text-white capitalize`}>{booking.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel className="font-body">Actions</DropdownMenuLabel>
-                          <Link href={`/admin/bookings/edit/${booking.id}`} passHref>
-                            <DropdownMenuItem className="font-body cursor-pointer">
-                              <Edit3 className="mr-2 h-4 w-4" /> Edit
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 font-body">Loading bookings...</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="font-body">Guest Name</TableHead>
+                  <TableHead className="font-body">Date & Time</TableHead>
+                  <TableHead className="font-body text-center">Party Size</TableHead>
+                  <TableHead className="font-body text-center">Status</TableHead>
+                  <TableHead className="font-body text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredBookings.length > 0 ? (
+                  filteredBookings.map((booking) => (
+                    <TableRow key={booking.id}>
+                      <TableCell className="font-medium font-body">{booking.guestName}</TableCell>
+                      <TableCell className="font-body">
+                        {format(new Date(booking.date + 'T00:00:00'), "MMM d, yyyy")} at {booking.time}
+                      </TableCell>
+                      <TableCell className="text-center font-body">{booking.partySize}</TableCell>
+                      <TableCell className="text-center font-body">
+                        <Badge className={`${statusColors[booking.status]} text-white capitalize`}>{booking.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel className="font-body">Actions</DropdownMenuLabel>
+                            <Link href={`/admin/bookings/edit/${booking.id}`} passHref>
+                              <DropdownMenuItem className="font-body cursor-pointer">
+                                <Edit3 className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                            </Link>
+                            <DropdownMenuItem 
+                              className="font-body text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                              onClick={() => openDeleteDialog(booking)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete
                             </DropdownMenuItem>
-                          </Link>
-                          <DropdownMenuItem 
-                            className="font-body text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                            onClick={() => openDeleteDialog(booking)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center font-body">
+                      No bookings found. You can add some initial data to your Firestore 'bookings' collection.
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center font-body">
-                    No bookings found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
