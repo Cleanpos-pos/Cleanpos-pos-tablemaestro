@@ -25,6 +25,7 @@ import {
   Settings,
   LogOut,
   UserCircle,
+  Sparkles, // Added for AI Waitlist Assistant
 } from "lucide-react";
 
 const menuItems = [
@@ -32,6 +33,7 @@ const menuItems = [
   { href: "/admin/bookings", label: "Bookings", icon: BookOpenText },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/settings", label: "Settings", icon: Settings },
+  // { href: "/admin/waitlist-assistant", label: "AI Waitlist", icon: Sparkles }, // Removed as per previous request
 ];
 
 export default function AdminSidebar() {
@@ -48,19 +50,17 @@ export default function AdminSidebar() {
         <SidebarMenu>
           {menuItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <Link href={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname.startsWith(item.href)}
-                  tooltip={item.label}
-                  className="font-body"
-                >
-                  <a>
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </a>
-                </SidebarMenuButton>
-              </Link>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.startsWith(item.href)}
+                tooltip={item.label}
+                className="font-body"
+              >
+                <Link href={item.href}>
+                  <item.icon className="h-5 w-5" />
+                  <span>{item.label}</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -79,14 +79,12 @@ export default function AdminSidebar() {
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                    <Link href="/">
-                        <SidebarMenuButton asChild className="font-body" tooltip="Logout">
-                            <a>
-                                <LogOut className="h-5 w-5" />
-                                <span>Logout</span>
-                            </a>
-                        </SidebarMenuButton>
-                    </Link>
+                    <SidebarMenuButton asChild className="font-body" tooltip="Logout">
+                        <Link href="/">
+                            <LogOut className="h-5 w-5" />
+                            <span>Logout</span>
+                        </Link>
+                    </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
         </SidebarGroup>
