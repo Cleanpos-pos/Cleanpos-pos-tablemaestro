@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow public read access to all files by default.
+    // You might want to restrict this further based on your needs.
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+    }
+
+    // User-specific image folders:
+    // Allow authenticated users to read, write, and delete files
+    // within a folder named after their user ID (uid).
+    // e.g., /users/{uid}/profile.jpg
+    match /users/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Example for other public assets if needed (e.g. restaurant hero images)
+    // match /public/{allPaths=**} {
+    //   allow read: if true;
+    // }
+  }
+}
