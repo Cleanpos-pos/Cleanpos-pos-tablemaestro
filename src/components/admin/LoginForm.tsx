@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +19,8 @@ import { Mail, Lock, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Logo from "@/components/shared/Logo";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/config/firebase"; // Import Firebase auth instance
 
 const loginFormSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -37,22 +40,31 @@ export default function LoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof loginFormSchema>) {
-    // Mock authentication
-    console.log("Login attempt:", values);
-    if (values.email === "admin@example.com" && values.password === "password") {
+    form.clearErrors(); // Clear previous errors
+    try {
+      await signInWithEmailAndPassword(auth, values.email, values.password);
       toast({
         title: "Login Successful",
         description: "Welcome back, Admin!",
       });
       router.push("/admin/dashboard");
-    } else {
+    } catch (error: any) {
+      console.error("Firebase login error:", error);
+      let errorMessage = "Login failed. Please check your credentials and try again.";
+      // You can customize error messages based on Firebase error codes if needed
+      // For example: if (error.code === 'auth/wrong-password') { ... }
+      // if (error.code === 'auth/user-not-found') { ... }
+      // if (error.code === 'auth/invalid-credential') { ... } // Covers both wrong password and user not found for newer SDKs
+      
       toast({
         title: "Login Failed",
-        description: "Invalid email or password. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
-      form.setError("password", { message: " "}); // Clear password field and indicate error
-      form.setValue("password","");
+      // Optionally set form errors if you want to highlight specific fields
+      form.setError("email", { type: "manual", message: " " }); // Add a space to trigger error display without specific message
+      form.setError("password", { type: "manual", message: " " });
+      form.setValue("password",""); // Clear password field
     }
   }
 
