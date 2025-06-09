@@ -21,18 +21,15 @@ import {
   LayoutDashboard,
   BookOpenText,
   CalendarClock,
-  UsersRound, // Using UsersRound for waitlist
   Settings,
   LogOut,
   UserCircle,
-  Sparkles,
 } from "lucide-react";
 
 const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/bookings", label: "Bookings", icon: BookOpenText },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
-  { href: "/admin/waitlist-assistant", label: "AI Waitlist", icon: Sparkles }, // Combined UsersRound and Sparkles meaning with just Sparkles
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
