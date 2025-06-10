@@ -6,7 +6,7 @@ import {
   setDoc,
   getDoc,
   serverTimestamp,
-  updateDoc,
+  updateDoc, // Added updateDoc to imports, though not used in this snippet, good practice
 } from 'firebase/firestore';
 
 const SETTINGS_COLLECTION = 'restaurantConfig';
@@ -20,18 +20,21 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
       updatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
-    console.error("Error saving restaurant settings: ", error);
+    console.error("[settingsService] Error saving restaurant settings: ", error);
     throw error;
   }
 };
 
 export const getRestaurantSettings = async (): Promise<CombinedSettings | null> => {
+  const settingsPath = `${SETTINGS_COLLECTION}/${MAIN_SETTINGS_DOC_ID}`;
   try {
+    console.log(`[settingsService] Attempting to fetch settings from: ${settingsPath}`);
     const settingsRef = doc(db, SETTINGS_COLLECTION, MAIN_SETTINGS_DOC_ID);
     const docSnap = await getDoc(settingsRef);
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      console.log(`[settingsService] Successfully fetched settings from: ${settingsPath}`);
       return {
         minAdvanceReservationHours: data.minAdvanceReservationHours,
         maxReservationDurationHours: data.maxReservationDurationHours,
@@ -42,47 +45,49 @@ export const getRestaurantSettings = async (): Promise<CombinedSettings | null> 
         restaurantImageUrl: data.restaurantImageUrl,
       } as CombinedSettings;
     } else {
+      console.warn(`[settingsService] No settings document found at: ${settingsPath}`);
       return null;
     }
   } catch (error) {
-    console.error("Error fetching restaurant settings: ", error);
-    throw error;
+    console.error(`[settingsService] Error fetching restaurant settings from ${settingsPath}: `, error);
+    throw error; // Re-throw to be caught by the calling function
   }
 };
 
 export const saveRestaurantSchedule = async (schedule: RestaurantSchedule): Promise<void> => {
   try {
     const settingsRef = doc(db, SETTINGS_COLLECTION, MAIN_SETTINGS_DOC_ID);
-    // Use updateDoc to add/update the schedule field specifically,
-    // or setDoc with merge:true if the document might not exist yet.
-    // Since 'main' doc is likely created by saveRestaurantSettings,
-    // setDoc with merge is safer if this can be called independently.
     await setDoc(settingsRef, {
       schedule: schedule,
       scheduleUpdatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
-    console.error("Error saving restaurant schedule: ", error);
+    console.error("[settingsService] Error saving restaurant schedule: ", error);
     throw error;
   }
 };
 
 export const getRestaurantSchedule = async (): Promise<RestaurantSchedule | null> => {
+  const schedulePath = `${SETTINGS_COLLECTION}/${MAIN_SETTINGS_DOC_ID} (schedule field)`;
   try {
+    console.log(`[settingsService] Attempting to fetch schedule from: ${schedulePath}`);
     const settingsRef = doc(db, SETTINGS_COLLECTION, MAIN_SETTINGS_DOC_ID);
     const docSnap = await getDoc(settingsRef);
 
     if (docSnap.exists()) {
       const data = docSnap.data();
       if (data.schedule) {
+        console.log(`[settingsService] Successfully fetched schedule from: ${schedulePath}`);
         return data.schedule as RestaurantSchedule;
       }
-      return null; // Schedule field doesn't exist
+      console.warn(`[settingsService] Settings document found, but no 'schedule' field at: ${schedulePath}`);
+      return null; 
     } else {
-      return null; // Settings document doesn't exist
+      console.warn(`[settingsService] No settings document found (for schedule) at: ${SETTINGS_COLLECTION}/${MAIN_SETTINGS_DOC_ID}`);
+      return null; 
     }
   } catch (error) {
-    console.error("Error fetching restaurant schedule: ", error);
+    console.error(`[settingsService] Error fetching restaurant schedule from ${schedulePath}: `, error);
     throw error;
   }
 };
