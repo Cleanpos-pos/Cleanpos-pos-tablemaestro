@@ -47,7 +47,7 @@ const defaultSettingsData: CombinedSettings = {
   timeSlotIntervalMinutes: 30,
   bookingLeadTimeDays: 90,
   restaurantName: "Table Maestro Restaurant",
-  restaurantImageUrl: "",
+  restaurantImageUrl: null, // Changed from "" to null
 };
 
 export default function SettingsPage() {
@@ -70,11 +70,15 @@ export default function SettingsPage() {
         form.reset(settings);
         if (settings.restaurantImageUrl) {
           setImagePreview(settings.restaurantImageUrl);
+        } else {
+          setImagePreview(null); // Ensure preview is cleared if URL is null/empty
         }
       } else {
-        form.reset(defaultSettingsData); // Reset to defaults if no settings found
+        form.reset(defaultSettingsData); 
          if (defaultSettingsData.restaurantImageUrl) {
           setImagePreview(defaultSettingsData.restaurantImageUrl);
+        } else {
+          setImagePreview(null);
         }
       }
     } catch (error) {
@@ -85,6 +89,7 @@ export default function SettingsPage() {
         variant: "destructive",
       });
       form.reset(defaultSettingsData);
+      setImagePreview(null);
     } finally {
       setIsLoading(false);
     }
@@ -103,12 +108,12 @@ export default function SettingsPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      form.setValue("restaurantImageUrl", "", { shouldValidate: true }); // Clear any existing URL
+      form.setValue("restaurantImageUrl", null, { shouldValidate: true }); // Changed from "" to null
     }
   };
 
   async function onSubmit(values: CombinedSettings) {
-    setIsUploading(true); // For overall submission process
+    setIsUploading(true); 
     let imageUrl = values.restaurantImageUrl;
 
     if (imageFile) {
@@ -116,7 +121,7 @@ export default function SettingsPage() {
         const timestamp = Date.now();
         const uniqueFileName = `profileImage_${timestamp}.${imageFile.name.split('.').pop()}`;
         imageUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
-        setImageFile(null); // Reset after upload
+        setImageFile(null); 
       } catch (error) {
         console.error("Image upload failed:", error);
         toast({
@@ -131,7 +136,7 @@ export default function SettingsPage() {
     
     const settingsToSave: CombinedSettings = {
       ...values,
-      restaurantImageUrl: imageUrl || null, // Ensure it's null if empty
+      restaurantImageUrl: imageUrl || null, 
     };
 
     try {
@@ -140,7 +145,8 @@ export default function SettingsPage() {
         title: "Settings Updated",
         description: "Restaurant settings have been successfully saved.",
       });
-      if (imageUrl) setImagePreview(imageUrl); // Update preview with new URL from storage
+      if (imageUrl) setImagePreview(imageUrl); 
+      else if (!imageFile && !imageUrl) setImagePreview(null); // If URL was cleared and no new file, clear preview
     } catch (error) {
       console.error("Failed to save settings:", error);
       toast({
@@ -200,6 +206,11 @@ export default function SettingsPage() {
                 {imagePreview && (
                   <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm">
                     <Image src={imagePreview} alt="Restaurant preview" layout="fill" objectFit="cover" />
+                  </div>
+                )}
+                 {!imagePreview && !form.getValues("restaurantImageUrl") && (
+                  <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm flex items-center justify-center bg-muted/30">
+                    <ImageIcon className="h-16 w-16 text-muted-foreground" />
                   </div>
                 )}
                 <FormDescription className="font-body">Upload an image for your restaurant (e.g., logo or a representative photo). Max 2MB.</FormDescription>
@@ -294,7 +305,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isUploading}>
+          <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isUploading || isLoading}>
             {form.formState.isSubmitting || isUploading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Saving...
@@ -310,3 +321,6 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+
+    
