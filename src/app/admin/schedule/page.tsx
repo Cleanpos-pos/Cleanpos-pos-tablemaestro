@@ -76,13 +76,19 @@ export default function RestaurantSchedulePage() {
       if (scheduleData) {
         form.reset({ schedule: scheduleData });
       } else {
-        form.reset({ schedule: defaultScheduleData }); // Reset to defaults if no schedule found
+        // No schedule data found in Firestore, this is not necessarily an error.
+        form.reset({ schedule: defaultScheduleData });
+        toast({
+          title: "No Saved Schedule Found",
+          description: "Using default operating hours. You can save a new schedule.",
+          variant: "default", // Use default variant, not "destructive"
+        });
       }
     } catch (error) {
       console.error("Failed to fetch schedule:", error);
       toast({
-        title: "Error Loading Schedule",
-        description: "Could not load schedule. Using default values.",
+        title: "Failed to Load Schedule",
+        description: `An error occurred while fetching the schedule: ${error instanceof Error ? error.message : "Unknown error"}. Using default values.`,
         variant: "destructive",
       });
       form.reset({ schedule: defaultScheduleData });
