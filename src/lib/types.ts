@@ -1,3 +1,4 @@
+
 export interface RestaurantDetails {
   name: string;
   address: string;
@@ -38,6 +39,14 @@ export interface ReservationSettings {
   timeSlotIntervalMinutes: number; // e.g., 15, 30 for 15/30-minute slots
   bookingLeadTimeDays: number; // How many days in advance can bookings be made
 }
+
+export interface RestaurantProfileSettings {
+  restaurantName?: string;
+  restaurantImageUrl?: string;
+}
+
+// Combined type for the settings page form
+export type CombinedSettings = ReservationSettings & RestaurantProfileSettings;
 
 export interface Table {
   id: string;
