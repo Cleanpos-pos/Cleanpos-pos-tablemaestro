@@ -23,6 +23,7 @@ import Image from "next/image";
 import React, { useState, useEffect, useCallback } from "react";
 import { getRestaurantSettings, saveRestaurantSettings } from "@/services/settingsService";
 import { uploadImageAndGetURL } from "@/services/storageService";
+import { auth } from "@/config/firebase"; // Import Firebase auth
 
 const reservationSettingsSchema = z.object({
   minAdvanceReservationHours: z.coerce.number().min(0, "Cannot be negative.").max(168, "Max 1 week."),
@@ -64,6 +65,7 @@ export default function SettingsPage() {
 
   const fetchSettings = useCallback(async () => {
     setIsLoading(true);
+    console.log("Admin Settings Page: Auth state before fetching settings:", auth.currentUser);
     try {
       const settings = await getRestaurantSettings();
       if (settings) {
@@ -74,7 +76,6 @@ export default function SettingsPage() {
           setImagePreview(null);
         }
       } else {
-        // No settings found in Firestore, use defaults and inform the user (not as an error)
         form.reset(defaultSettingsData);
         setImagePreview(defaultSettingsData.restaurantImageUrl || null);
         toast({
@@ -84,7 +85,7 @@ export default function SettingsPage() {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Failed to fetch settings:", error);
+      console.error("Error fetching restaurant settings: ", error);
       toast({
         title: "Error Loading Settings",
         description: `Could not retrieve settings: ${errorMessage}. Using default values.`,
@@ -323,5 +324,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    
