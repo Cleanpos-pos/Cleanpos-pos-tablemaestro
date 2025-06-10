@@ -4,22 +4,35 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper function to check if a user is an admin
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     // Bookings:
-    // - Anyone can create (make a new booking).
-    // - Only authenticated users (admins) can read, update, or delete existing bookings.
+    // - Anyone can create a booking.
+    // - Only admins can read, update, or delete bookings.
     match /bookings/{bookingId} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow create: if true; // Allows public booking creation
+      allow read, update, delete: if request.auth != null && isAdmin();
     }
 
     // Restaurant Configuration (Settings & Schedule):
-    // - Only a specific Admin UID can read or write.
-    // IMPORTANT: Replace 'YOUR_ADMIN_UID_HERE' with your actual admin user's UID.
+    // - Only admins can read or write.
     match /restaurantConfig/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == 'YOUR_ADMIN_UID_HERE';
+      allow read, write: if request.auth != null && isAdmin();
     }
 
-    // Default deny all other paths
+    // Admins collection:
+    // - Stores UIDs of admin users.
+    // - Only existing admins can read or manage (add/remove) other admins.
+    // - IMPORTANT: The first admin(s) must be added manually via the Firebase Console.
+    //   The Document ID in the 'admins' collection should be the user's Firebase Auth UID.
+    match /admins/{userId} {
+      allow read, write: if request.auth != null && isAdmin();
+    }
+
+    // Default deny all other paths for security
     match /{document=**} {
       allow read, write: if false;
     }
