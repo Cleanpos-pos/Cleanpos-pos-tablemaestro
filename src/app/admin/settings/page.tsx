@@ -47,7 +47,7 @@ const defaultSettingsData: CombinedSettings = {
   timeSlotIntervalMinutes: 30,
   bookingLeadTimeDays: 90,
   restaurantName: "Table Maestro Restaurant",
-  restaurantImageUrl: null, // Changed from "" to null
+  restaurantImageUrl: null,
 };
 
 export default function SettingsPage() {
@@ -71,25 +71,27 @@ export default function SettingsPage() {
         if (settings.restaurantImageUrl) {
           setImagePreview(settings.restaurantImageUrl);
         } else {
-          setImagePreview(null); // Ensure preview is cleared if URL is null/empty
-        }
-      } else {
-        form.reset(defaultSettingsData); 
-         if (defaultSettingsData.restaurantImageUrl) {
-          setImagePreview(defaultSettingsData.restaurantImageUrl);
-        } else {
           setImagePreview(null);
         }
+      } else {
+        // No settings found in Firestore, use defaults and inform the user (not as an error)
+        form.reset(defaultSettingsData);
+        setImagePreview(defaultSettingsData.restaurantImageUrl || null);
+        toast({
+          title: "No Saved Settings Found",
+          description: "Using default settings. You can save new settings here.",
+        });
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Failed to fetch settings:", error);
       toast({
-        title: "Error",
-        description: "Failed to load settings. Using default values.",
+        title: "Error Loading Settings",
+        description: `Could not retrieve settings: ${errorMessage}. Using default values.`,
         variant: "destructive",
       });
       form.reset(defaultSettingsData);
-      setImagePreview(null);
+      setImagePreview(defaultSettingsData.restaurantImageUrl || null);
     } finally {
       setIsLoading(false);
     }
@@ -108,7 +110,7 @@ export default function SettingsPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      form.setValue("restaurantImageUrl", null, { shouldValidate: true }); // Changed from "" to null
+      form.setValue("restaurantImageUrl", null, { shouldValidate: true });
     }
   };
 
@@ -146,12 +148,12 @@ export default function SettingsPage() {
         description: "Restaurant settings have been successfully saved.",
       });
       if (imageUrl) setImagePreview(imageUrl); 
-      else if (!imageFile && !imageUrl) setImagePreview(null); // If URL was cleared and no new file, clear preview
+      else if (!imageFile && !imageUrl) setImagePreview(null);
     } catch (error) {
       console.error("Failed to save settings:", error);
       toast({
         title: "Save Failed",
-        description: "Could not save settings. Please try again.",
+        description: `Could not save settings: ${error instanceof Error ? error.message : String(error)}. Please try again.`,
         variant: "destructive",
       });
     } finally {
@@ -321,6 +323,5 @@ export default function SettingsPage() {
     </div>
   );
 }
-
 
     
