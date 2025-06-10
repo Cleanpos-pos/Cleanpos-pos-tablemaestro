@@ -41,10 +41,11 @@ export default function BookingManagementPage() {
         const firestoreBookings = await getBookings();
         setBookings(firestoreBookings);
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         console.error("Failed to fetch bookings:", error);
         toast({
-          title: "Error",
-          description: "Failed to load bookings. Please try again.",
+          title: "Error Loading Bookings",
+          description: `Could not retrieve bookings: ${errorMessage}. Please try again.`,
           variant: "destructive",
         });
       } finally {
@@ -58,7 +59,7 @@ export default function BookingManagementPage() {
     return bookings
       .filter((booking) =>
         booking.guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        booking.id.toLowerCase().includes(searchTerm.toLowerCase())
+        (booking.id && booking.id.toLowerCase().includes(searchTerm.toLowerCase()))
       )
       .filter((booking) =>
         statusFilter.length === 0 || statusFilter.includes(booking.status)
@@ -86,10 +87,11 @@ export default function BookingManagementPage() {
         setBookings(prev => prev.filter(b => b.id !== bookingToDelete.id));
         toast({ title: "Booking Deleted", description: `Booking for ${bookingToDelete.guestName} has been deleted.`});
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         console.error("Failed to delete booking:", error);
         toast({
-          title: "Error",
-          description: "Failed to delete booking. Please try again.",
+          title: "Error Deleting Booking",
+          description: `Could not delete booking: ${errorMessage}. Please try again.`,
           variant: "destructive",
         });
       } finally {
@@ -188,7 +190,7 @@ export default function BookingManagementPage() {
                     <TableRow key={booking.id}>
                       <TableCell className="font-medium font-body">{booking.guestName}</TableCell>
                       <TableCell className="font-body">
-                        {format(new Date(booking.date + 'T00:00:00'), "MMM d, yyyy")} at {booking.time}
+                        {booking.date && booking.time ? `${format(new Date(booking.date + 'T00:00:00'), "MMM d, yyyy")} at ${booking.time}` : 'Date/Time not set'}
                       </TableCell>
                       <TableCell className="text-center font-body">{booking.partySize}</TableCell>
                       <TableCell className="text-center font-body">
@@ -223,7 +225,7 @@ export default function BookingManagementPage() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center font-body">
-                      No bookings found. You can add some initial data to your Firestore 'bookings' collection.
+                      No bookings found matching your criteria, or no bookings exist yet.
                     </TableCell>
                   </TableRow>
                 )}
@@ -251,3 +253,4 @@ export default function BookingManagementPage() {
     </div>
   );
 }
+
