@@ -53,12 +53,14 @@ export default function HomePage() {
             <p className="text-center text-muted-foreground font-body">
               Empower your restaurant with seamless booking management, AI-powered waitlist optimization, and insightful analytics.
             </p>
-            <Button variant="default" className="w-full h-12 text-base btn-subtle-animate bg-primary hover:bg-primary/90 text-primary-foreground">
-              <UserPlus className="mr-2 h-5 w-5" />
-              Sign Up Now (Coming Soon)
-            </Button>
+            <Link href="/signup" passHref>
+              <Button variant="default" className="w-full h-12 text-base btn-subtle-animate bg-primary hover:bg-primary/90 text-primary-foreground">
+                <UserPlus className="mr-2 h-5 w-5" />
+                Sign Up Now
+              </Button>
+            </Link>
              <p className="text-xs text-center text-muted-foreground font-body">
-              Interested? Contact us for early access or more information.
+              Start managing your restaurant bookings efficiently today!
             </p>
           </CardContent>
         </Card>
