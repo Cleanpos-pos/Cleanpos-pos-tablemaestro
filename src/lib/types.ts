@@ -23,11 +23,17 @@ export interface Booking {
   tableId?: string; // Optional: if assigned to a specific table
 }
 
+export interface TimeSlot {
+  // id field is managed by useFieldArray, not part of stored data model typically
+  name: string; // e.g., "Lunch", "Dinner", "Brunch"
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+}
+
 export interface DaySchedule {
   dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   isOpen: boolean;
-  openTime?: string; // HH:MM
-  closeTime?: string; // HH:MM
+  timeSlots: TimeSlot[];
 }
 
 export type RestaurantSchedule = DaySchedule[];
@@ -41,7 +47,7 @@ export interface ReservationSettings {
 }
 
 export interface RestaurantProfileSettings {
-  restaurantName?: string | null; // Changed to allow null
+  restaurantName?: string | null;
   restaurantImageUrl?: string | null;
   restaurantGalleryUrls?: (string | null)[]; // Array of up to 6 image URLs or nulls
 }
