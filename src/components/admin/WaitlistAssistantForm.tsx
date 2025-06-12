@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useFormState } from "react-dom";
@@ -6,17 +7,27 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sparkles, AlertCircle, CheckCircle, Lightbulb } from "lucide-react";
-import { optimizeWaitlistAction, type WaitlistFormState } from "@/lib/actions";
+import { Sparkles, AlertCircle, CheckCircle, Lightbulb, Loader2 } from "lucide-react"; // Added Loader2
+import { optimizeWaitlistAction, type WaitlistFormState } from "@/lib/actions"; // Updated import
 
-const initialState: WaitlistFormState = {};
+const initialState: WaitlistFormState = {
+  message: undefined,
+  errors: undefined,
+  output: undefined,
+};
 
 export default function WaitlistAssistantForm() {
   const [state, formAction] = useFormState(optimizeWaitlistAction, initialState);
 
-  const exampleReservationData = JSON.stringify([{ partySize: 4, arrivalTime: "19:00", specialRequests: "window seat" }, { partySize: 2, arrivalTime: "19:30" }], null, 2);
-  const exampleTableAvailability = JSON.stringify([{ tableId: "T1", capacity: 4, status: "available" }, { tableId: "T2", capacity: 2, status: "available" }], null, 2);
-  const exampleCustomerWaitlist = JSON.stringify([{ name: "John Doe", partySize: 3, arrivalTime: "18:45" }], null, 2);
+  // Check if the form is in a pending state (submitting)
+  // Note: React's useFormState doesn't directly expose a `pending` status like react-hook-form's `isSubmitting`.
+  // We can infer pending state if there's no message and no errors yet, but this is not foolproof.
+  // For a more robust solution, you might manage a separate loading state, or rely on the UI update after submission.
+  // For Cloud Build, the error might be related to the initial render.
+
+  const exampleReservationData = JSON.stringify([{ "partySize": 4, "arrivalTime": "19:00", "specialRequests": "window seat" }, { "partySize": 2, "arrivalTime": "19:30" }], null, 2);
+  const exampleTableAvailability = JSON.stringify([{ "tableId": "T1", "capacity": 4, "status": "available" }, { "tableId": "T2", "capacity": 2, "status": "available" }], null, 2);
+  const exampleCustomerWaitlist = JSON.stringify([{ "name": "John Doe", "partySize": 3, "arrivalTime": "18:45" }], null, 2);
 
   return (
     <Card className="w-full shadow-lg rounded-xl form-interaction-animate">
@@ -40,6 +51,7 @@ export default function WaitlistAssistantForm() {
               placeholder={exampleReservationData}
               className="font-code mt-1"
               aria-describedby="reservationDataError"
+              defaultValue={''} // Ensure it's controlled from the start
             />
             {state?.errors?.reservationData && <p id="reservationDataError" className="text-sm text-destructive mt-1">{state.errors.reservationData.join(", ")}</p>}
           </div>
@@ -52,6 +64,7 @@ export default function WaitlistAssistantForm() {
               placeholder={exampleTableAvailability}
               className="font-code mt-1"
               aria-describedby="tableAvailabilityError"
+              defaultValue={''} // Ensure it's controlled from the start
             />
             {state?.errors?.tableAvailability && <p id="tableAvailabilityError" className="text-sm text-destructive mt-1">{state.errors.tableAvailability.join(", ")}</p>}
           </div>
@@ -64,6 +77,7 @@ export default function WaitlistAssistantForm() {
               placeholder={exampleCustomerWaitlist}
               className="font-code mt-1"
               aria-describedby="customerWaitlistError"
+              defaultValue={''} // Ensure it's controlled from the start
             />
             {state?.errors?.customerWaitlist && <p id="customerWaitlistError" className="text-sm text-destructive mt-1">{state.errors.customerWaitlist.join(", ")}</p>}
           </div>
@@ -73,24 +87,27 @@ export default function WaitlistAssistantForm() {
             <Lightbulb className="mr-2 h-5 w-5" /> Optimize Seating
           </Button>
 
-          {state?.message && !state.errors && (
-            <Alert variant="default" className="bg-green-50 border-green-300">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              <AlertTitle className="font-headline text-green-700">Success!</AlertTitle>
-              <AlertDescription className="font-body text-green-600">{state.message}</AlertDescription>
-            </Alert>
-          )}
-          {state?.message && state.errors && (
+          {/* Display general form errors or AI flow errors */}
+          {state?.errors?._form && (
              <Alert variant="destructive">
                 <AlertCircle className="h-5 w-5" />
                 <AlertTitle className="font-headline">Error</AlertTitle>
                 <AlertDescription className="font-body">
-                {state.message}
-                {state.errors._form && <p>{state.errors._form.join(", ")}</p>}
+                {state.errors._form.join(", ")}
                 </AlertDescription>
             </Alert>
           )}
 
+          {/* Display success message (can be combined with output display) */}
+          {state?.message && !state.errors?._form && !state.errors?.customerWaitlist && !state.errors?.reservationData && !state.errors?.tableAvailability && (
+            <Alert variant="default" className="bg-green-50 border-green-300">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <AlertTitle className="font-headline text-green-700">Status</AlertTitle>
+              <AlertDescription className="font-body text-green-600">{state.message}</AlertDescription>
+            </Alert>
+          )}
+          
+          {/* Display AI output if available */}
           {state?.output && (
             <div className="w-full space-y-4 pt-4 border-t mt-4">
               <h3 className="text-xl font-headline text-foreground">Optimization Results:</h3>
@@ -123,3 +140,4 @@ export default function WaitlistAssistantForm() {
     </Card>
   );
 }
+

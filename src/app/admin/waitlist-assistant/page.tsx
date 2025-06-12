@@ -1,3 +1,6 @@
+
+"use client"; // Make this page a client component
+
 import WaitlistAssistantForm from "@/components/admin/WaitlistAssistantForm";
 
 export default function AIWaitlistAssistantPage() {
