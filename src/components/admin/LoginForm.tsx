@@ -51,10 +51,16 @@ export default function LoginForm() {
     } catch (error: any) {
       console.error("Firebase login error:", error);
       let errorMessage = "Login failed. Please check your credentials and try again.";
-      // You can customize error messages based on Firebase error codes if needed
-      // For example: if (error.code === 'auth/wrong-password') { ... }
-      // if (error.code === 'auth/user-not-found') { ... }
-      // if (error.code === 'auth/invalid-credential') { ... } // Covers both wrong password and user not found for newer SDKs
+      
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = "Network error. Please check your internet connection and try again.";
+      } else if (error.code === 'auth/visibility-check-was-unavailable') {
+        errorMessage = "Login check failed. This might be due to browser settings (e.g., blocked cookies if in an iframe) or network issues. Please ensure cookies are enabled for Firebase, try a different browser/incognito mode, and then retry logging in.";
+      }
       
       toast({
         title: "Login Failed",
@@ -62,7 +68,7 @@ export default function LoginForm() {
         variant: "destructive",
       });
       // Optionally set form errors if you want to highlight specific fields
-      form.setError("email", { type: "manual", message: " " }); // Add a space to trigger error display without specific message
+      form.setError("email", { type: "manual", message: " " }); 
       form.setError("password", { type: "manual", message: " " });
       form.setValue("password",""); // Clear password field
     }
