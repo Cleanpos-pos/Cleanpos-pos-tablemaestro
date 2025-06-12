@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2 } from "lucide-react";
+import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, GalleryHorizontalEnd } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { ReservationSettings, RestaurantProfileSettings, CombinedSettings } from "@/lib/types";
+import type { CombinedSettings } from "@/lib/types";
 import Image from "next/image";
 import React, { useState, useEffect, useCallback } from "react";
 import { getRestaurantSettings, saveRestaurantSettings } from "@/services/settingsService";
@@ -36,6 +36,7 @@ const reservationSettingsSchema = z.object({
 const restaurantProfileSchema = z.object({
   restaurantName: z.string().min(1, "Restaurant name is required.").max(100).optional(),
   restaurantImageUrl: z.string().url("Invalid URL.").optional().nullable(),
+  restaurantGalleryUrls: z.array(z.string().url("Invalid URL.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
 });
 
 const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema);
@@ -48,14 +49,17 @@ const defaultSettingsData: CombinedSettings = {
   bookingLeadTimeDays: 90,
   restaurantName: "Table Maestro Restaurant",
   restaurantImageUrl: null,
+  restaurantGalleryUrls: Array(6).fill(null),
 };
 
 export default function SettingsPage() {
   const { toast } = useToast();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [galleryImageFiles, setGalleryImageFiles] = useState<(File | null)[]>(Array(6).fill(null));
+  const [galleryImagePreviews, setGalleryImagePreviews] = useState<(string | null)[]>(Array(6).fill(null));
   const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false); // Changed from isSubmitting to isUploading for clarity
+  const [isSaving, setIsSaving] = useState(false);
   
   const form = useForm<CombinedSettings>({
     resolver: zodResolver(combinedSettingsSchema),
@@ -74,9 +78,13 @@ export default function SettingsPage() {
         } else {
           setImagePreview(null);
         }
+        const loadedGalleryUrls = settings.restaurantGalleryUrls || Array(6).fill(null);
+        setGalleryImagePreviews([...loadedGalleryUrls]);
+
       } else {
         form.reset(defaultSettingsData);
         setImagePreview(defaultSettingsData.restaurantImageUrl || null);
+        setGalleryImagePreviews(Array(6).fill(null));
         toast({
           title: "No Saved Settings Found",
           description: "Using default settings. You can save new settings here.",
@@ -84,7 +92,7 @@ export default function SettingsPage() {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error fetching restaurant settings: ", error);
+      console.error("[settingsService] Error fetching restaurant settings: ", error);
       toast({
         title: "Error Loading Settings",
         description: `Could not retrieve settings: ${errorMessage}. Using default values.`,
@@ -92,6 +100,7 @@ export default function SettingsPage() {
       });
       form.reset(defaultSettingsData);
       setImagePreview(defaultSettingsData.restaurantImageUrl || null);
+      setGalleryImagePreviews(Array(6).fill(null));
     } finally {
       setIsLoading(false);
     }
@@ -110,14 +119,38 @@ export default function SettingsPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      // When a new file is selected, we anticipate its URL will replace the current one.
-      // So, we set the form's restaurantImageUrl to null. It will be updated with the new URL after upload.
       form.setValue("restaurantImageUrl", null, { shouldValidate: true, shouldDirty: true });
+    } else {
+        setImageFile(null);
+        setImagePreview(form.getValues("restaurantImageUrl") || null); // Revert to original if cleared
     }
   };
 
+  const handleGalleryImageChange = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = event.target.files?.[0];
+    const newGalleryImageFiles = [...galleryImageFiles];
+    const newGalleryImagePreviews = [...galleryImagePreviews];
+
+    if (file) {
+      newGalleryImageFiles[index] = file;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        newGalleryImagePreviews[index] = reader.result as string;
+        setGalleryImagePreviews(newGalleryImagePreviews);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // If file is cleared, also clear the preview and the staged file
+      newGalleryImageFiles[index] = null;
+      newGalleryImagePreviews[index] = null; 
+      setGalleryImagePreviews(newGalleryImagePreviews);
+    }
+    setGalleryImageFiles(newGalleryImageFiles);
+  };
+
+
   async function onSubmit(values: CombinedSettings) {
-    console.log("onSubmit triggered. Form values:", values, "Selected image file:", imageFile);
+    console.log("onSubmit triggered. Form values:", values, "Selected image file:", imageFile, "Gallery files:", galleryImageFiles);
 
     if (!auth.currentUser) {
       toast({
@@ -126,33 +159,66 @@ export default function SettingsPage() {
         variant: "destructive",
       });
       console.error("Save settings failed: User not authenticated.");
-      return; // Stop if not authenticated
+      return;
     }
     console.log("Authenticated user for save:", auth.currentUser.uid);
 
-    setIsUploading(true); // Indicate that an operation (upload or save) is in progress
+    setIsSaving(true);
     
-    // Initialize settingsToSave with current form values
     const settingsToSave: CombinedSettings = { ...values };
 
     try {
+      // Handle main restaurant image
       if (imageFile) {
-        console.log("Attempting to upload new image...");
+        console.log("Attempting to upload new main restaurant image...");
         const timestamp = Date.now();
         const uniqueFileName = `profileImage_${timestamp}.${imageFile.name.split('.').pop()}`;
         const newUploadedUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
-        console.log("Image uploaded successfully. New URL:", newUploadedUrl);
-        settingsToSave.restaurantImageUrl = newUploadedUrl; // Update with new URL
-        setImageFile(null); // Clear the file input state, as it's now uploaded
-      } else {
-        // No new file to upload. values.restaurantImageUrl already reflects the desired state:
-        // - It's the existing URL if no changes were made to the image.
-        // - It's null if the user selected a new file (which nulled it via handleImageChange) and then removed the selection without submitting.
-        // - It's null if the user explicitly cleared an existing image (if such UI existed).
-        // So, settingsToSave.restaurantImageUrl is already correctly set from `...values`.
-        console.log("No new image file to upload. Using restaurantImageUrl from form values:", values.restaurantImageUrl);
+        console.log("Main image uploaded successfully. New URL:", newUploadedUrl);
+        settingsToSave.restaurantImageUrl = newUploadedUrl;
+      } else if (imagePreview === null && values.restaurantImageUrl) {
+         // If preview is null (cleared) but form still has old URL, it means user cleared it
+        settingsToSave.restaurantImageUrl = null;
       }
+      // else settingsToSave.restaurantImageUrl already reflects the current URL or null if not set
 
+
+      // Handle gallery images
+      const finalGalleryUrls: (string | null)[] = [...(values.restaurantGalleryUrls || Array(6).fill(null))];
+      let galleryUploadOccurred = false;
+
+      for (let i = 0; i < 6; i++) {
+        const file = galleryImageFiles[i];
+        if (file) { // New file in this slot
+          galleryUploadOccurred = true;
+          const timestamp = Date.now();
+          const uniqueFileName = `gallery/slot_${i}_${timestamp}_${file.name.replace(/\s+/g, '_')}`;
+          try {
+            console.log(`Uploading gallery image for slot ${i}: ${file.name}`);
+            const uploadedUrl = await uploadImageAndGetURL(file, `restaurant/${uniqueFileName}`);
+            finalGalleryUrls[i] = uploadedUrl;
+            console.log(`Gallery slot ${i} uploaded: ${uploadedUrl}`);
+          } catch (uploadError) {
+            console.error(`Failed to upload gallery image for slot ${i}:`, uploadError);
+            toast({
+              title: `Gallery Image Slot ${i + 1} Upload Failed`,
+              description: uploadError instanceof Error ? uploadError.message : "Could not upload image.",
+              variant: "destructive",
+            });
+            // Keep existing URL if upload fails, or null if it was a new slot
+            finalGalleryUrls[i] = values.restaurantGalleryUrls?.[i] || null; 
+          }
+        } else if (!galleryImagePreviews[i] && finalGalleryUrls[i]) { 
+          // No new file, and preview is null, means existing image in this slot was cleared
+          console.log(`Gallery slot ${i} cleared. Old URL was: ${finalGalleryUrls[i]}`);
+          // Consider deleting from storage here if needed: await deleteImageFromStorage(finalGalleryUrls[i]);
+          finalGalleryUrls[i] = null;
+        }
+        // If galleryImageFiles[i] is null AND galleryImagePreviews[i] exists, it means an existing image is being kept.
+        // finalGalleryUrls[i] already correctly holds this value from the spread of values.restaurantGalleryUrls
+      }
+      settingsToSave.restaurantGalleryUrls = finalGalleryUrls;
+      
       console.log("Attempting to save settings to Firestore:", settingsToSave);
       await saveRestaurantSettings(settingsToSave);
       console.log("Settings saved successfully to Firestore.");
@@ -161,9 +227,13 @@ export default function SettingsPage() {
         description: "Restaurant settings have been successfully saved.",
       });
 
-      // Update preview to reflect the saved state
-      setImagePreview(settingsToSave.restaurantImageUrl || null);
-      form.reset(settingsToSave, { keepValues: false, keepDirty: false, keepDefaultValues: false }); // Reset form with new saved values
+      form.reset(settingsToSave); // Reset form with new saved values
+      setImageFile(null); // Clear the main image file input state
+      if (settingsToSave.restaurantImageUrl) setImagePreview(settingsToSave.restaurantImageUrl); else setImagePreview(null);
+      
+      setGalleryImageFiles(Array(6).fill(null)); // Clear staged gallery files
+      setGalleryImagePreviews([...(settingsToSave.restaurantGalleryUrls || Array(6).fill(null))]); // Update previews
+
 
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
@@ -174,8 +244,8 @@ export default function SettingsPage() {
         variant: "destructive",
       });
     } finally {
-      console.log("onSubmit finally block. Resetting loading state.");
-      setIsUploading(false); // Reset loading state
+      console.log("onSubmit finally block. Resetting saving state.");
+      setIsSaving(false);
     }
   }
 
@@ -223,20 +293,57 @@ export default function SettingsPage() {
                 <FormControl>
                   <Input type="file" accept="image/png, image/jpeg, image/webp" onChange={handleImageChange} className="font-body file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20" />
                 </FormControl>
-                {imagePreview && (
+                {imagePreview ? (
                   <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm">
                     <Image src={imagePreview} alt="Restaurant preview" layout="fill" objectFit="cover" />
                   </div>
-                )}
-                 {!imagePreview && ( // Show placeholder if no preview (could be initial or after clearing)
+                ) : ( 
                   <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm flex items-center justify-center bg-muted/30">
                     <ImageIcon className="h-16 w-16 text-muted-foreground" />
                   </div>
                 )}
                 <FormDescription className="font-body">Upload an image for your restaurant (e.g., logo or a representative photo). Max 2MB.</FormDescription>
-                {/* This specific FormMessage might not be directly tied to a Zod field if URL is handled manually */}
                 {form.formState.errors.restaurantImageUrl?.message && <p className="text-sm font-medium text-destructive">{form.formState.errors.restaurantImageUrl.message}</p>}
               </FormItem>
+
+              {/* Restaurant Gallery Section */}
+              <FormField
+                control={form.control}
+                name="restaurantGalleryUrls"
+                render={() => ( // Field itself is for validation, UI is custom
+                <FormItem className="md:col-span-2 pt-4">
+                  <FormLabel className="font-body text-lg flex items-center">
+                    <GalleryHorizontalEnd className="mr-2 h-5 w-5 text-muted-foreground" />
+                    Restaurant Gallery (Up to 6 images)
+                  </FormLabel>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-2">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div key={index} className="space-y-2">
+                        <FormControl>
+                          <Input
+                            type="file"
+                            accept="image/png, image/jpeg, image/webp"
+                            onChange={(e) => handleGalleryImageChange(e, index)}
+                            className="font-body file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                          />
+                        </FormControl>
+                        {galleryImagePreviews[index] ? (
+                          <div className="relative w-full aspect-video rounded-md overflow-hidden border shadow-sm">
+                            <Image src={galleryImagePreviews[index]!} alt={`Gallery image ${index + 1} preview`} layout="fill" objectFit="cover" />
+                          </div>
+                        ) : (
+                          <div className="relative w-full aspect-video rounded-md overflow-hidden border shadow-sm flex items-center justify-center bg-muted/30">
+                            <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <FormDescription className="font-body mt-2">Upload images for your restaurant's gallery. Max 2MB each. Clear an input to remove an image.</FormDescription>
+                   <FormMessage />
+                </FormItem>
+                )}
+                />
             </CardContent>
           </Card>
           
@@ -326,8 +433,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isUploading || isLoading || form.formState.isSubmitting}>
-            {isUploading || form.formState.isSubmitting ? (
+          <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSaving || isLoading || form.formState.isSubmitting}>
+            {isSaving || form.formState.isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Saving...
               </>

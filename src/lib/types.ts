@@ -42,7 +42,8 @@ export interface ReservationSettings {
 
 export interface RestaurantProfileSettings {
   restaurantName?: string;
-  restaurantImageUrl?: string;
+  restaurantImageUrl?: string | null;
+  restaurantGalleryUrls?: (string | null)[]; // Array of up to 6 image URLs or nulls
 }
 
 // Combined type for the settings page form
