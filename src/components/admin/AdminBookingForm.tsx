@@ -35,7 +35,7 @@ const adminBookingFormSchema = z.object({
   guestName: z.string().min(2, "Name must be at least 2 characters."),
   guestEmail: z.string().email("Invalid email address.").optional().or(z.literal('')),
   guestPhone: z.string().min(10, "Phone number seems too short.").optional().or(z.literal('')),
-  date: z.date({ required_error: "A date is required." }),
+  date: z.date({ required_error: "A date is required." }).optional(), // Optional because initial state might not have it
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
   partySize: z.coerce.number().min(1, "At least 1 guest."),
   status: z.enum(['confirmed', 'pending', 'seated', 'completed', 'cancelled']),
@@ -44,6 +44,18 @@ const adminBookingFormSchema = z.object({
 });
 
 type AdminBookingFormValues = z.infer<typeof adminBookingFormSchema>;
+
+const getInitialDate = (dateString?: string): Date | undefined => {
+  if (dateString) {
+    const parsedDate = parseISO(dateString);
+    if (isValid(parsedDate)) {
+      return parsedDate;
+    }
+    console.warn(`Invalid date string from existing booking: ${dateString}. Setting date to undefined.`);
+    return undefined;
+  }
+  return undefined;
+};
 
 export default function AdminBookingForm({ existingBooking }: AdminBookingFormProps) {
   const { toast } = useToast();
@@ -54,7 +66,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     guestName: existingBooking?.guestName || "",
     guestEmail: existingBooking?.guestEmail || "",
     guestPhone: existingBooking?.guestPhone || "",
-    date: existingBooking?.date ? parseISO(existingBooking.date) : undefined,
+    date: getInitialDate(existingBooking?.date),
     time: existingBooking?.time || "19:00",
     partySize: existingBooking?.partySize || 1,
     status: existingBooking?.status || "pending",
@@ -67,19 +79,17 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     defaultValues,
   });
   
-  // Ensure date is valid after parsing
-  if (existingBooking?.date) {
-    const parsedDate = parseISO(existingBooking.date);
-    if (isValid(parsedDate)) {
-      form.setValue('date', parsedDate);
-    } else {
-       console.warn(`Invalid date string from existing booking: ${existingBooking.date}. Setting date to undefined.`);
-       form.setValue('date', undefined); // Or handle error appropriately
-    }
-  }
-
 
   async function onSubmit(values: AdminBookingFormValues) {
+    if (!values.date) {
+      toast({
+        title: "Validation Error",
+        description: "A date is required for the booking.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const bookingDataForFirestore = {
       ...values,
       date: format(values.date, "yyyy-MM-dd"), // Format date for Firestore
@@ -290,4 +300,3 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     </Form>
   );
 }
-
