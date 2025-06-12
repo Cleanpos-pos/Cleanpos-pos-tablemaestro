@@ -23,7 +23,7 @@ import Image from "next/image";
 import React, { useState, useEffect, useCallback } from "react";
 import { getRestaurantSettings, saveRestaurantSettings } from "@/services/settingsService";
 import { uploadImageAndGetURL } from "@/services/storageService";
-import { auth } from "@/config/firebase"; // Import Firebase auth
+import { auth } from "@/config/firebase"; 
 
 const reservationSettingsSchema = z.object({
   minAdvanceReservationHours: z.coerce.number().min(0, "Cannot be negative.").max(168, "Max 1 week."),
@@ -40,7 +40,6 @@ const restaurantProfileSchema = z.object({
 
 const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema);
 
-// Default settings data
 const defaultSettingsData: CombinedSettings = {
   minAdvanceReservationHours: 2,
   maxReservationDurationHours: 2.5,
@@ -56,7 +55,7 @@ export default function SettingsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // Changed from isSubmitting to isUploading for clarity
   
   const form = useForm<CombinedSettings>({
     resolver: zodResolver(combinedSettingsSchema),
@@ -111,65 +110,72 @@ export default function SettingsPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      form.setValue("restaurantImageUrl", null, { shouldValidate: true });
+      // When a new file is selected, we anticipate its URL will replace the current one.
+      // So, we set the form's restaurantImageUrl to null. It will be updated with the new URL after upload.
+      form.setValue("restaurantImageUrl", null, { shouldValidate: true, shouldDirty: true });
     }
   };
 
   async function onSubmit(values: CombinedSettings) {
-    console.log("onSubmit called with values:", values);
-    console.log("Current imageFile:", imageFile);
-    console.log("Current auth user for save:", auth.currentUser ? auth.currentUser.uid : 'No user');
+    console.log("onSubmit triggered. Form values:", values, "Selected image file:", imageFile);
 
-    setIsUploading(true); 
-    let imageUrl = values.restaurantImageUrl;
-
-    if (imageFile) {
-      console.log("Attempting to upload image...");
-      try {
-        const timestamp = Date.now();
-        const uniqueFileName = `profileImage_${timestamp}.${imageFile.name.split('.').pop()}`;
-        imageUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
-        setImageFile(null); 
-        console.log("Image uploaded successfully:", imageUrl);
-      } catch (error) {
-        const errMessage = error instanceof Error ? error.message : String(error);
-        console.error("Image upload failed:", errMessage, error);
-        toast({
-          title: "Image Upload Failed",
-          description: `Could not upload restaurant image: ${errMessage}. Please try again.`,
-          variant: "destructive",
-        });
-        setIsUploading(false);
-        return;
-      }
+    if (!auth.currentUser) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in as an admin to save settings. Please log in again.",
+        variant: "destructive",
+      });
+      console.error("Save settings failed: User not authenticated.");
+      return; // Stop if not authenticated
     }
+    console.log("Authenticated user for save:", auth.currentUser.uid);
+
+    setIsUploading(true); // Indicate that an operation (upload or save) is in progress
     
-    const settingsToSave: CombinedSettings = {
-      ...values,
-      restaurantImageUrl: imageUrl || null, 
-    };
-    console.log("Attempting to save settings to Firestore:", settingsToSave);
+    // Initialize settingsToSave with current form values
+    const settingsToSave: CombinedSettings = { ...values };
 
     try {
+      if (imageFile) {
+        console.log("Attempting to upload new image...");
+        const timestamp = Date.now();
+        const uniqueFileName = `profileImage_${timestamp}.${imageFile.name.split('.').pop()}`;
+        const newUploadedUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
+        console.log("Image uploaded successfully. New URL:", newUploadedUrl);
+        settingsToSave.restaurantImageUrl = newUploadedUrl; // Update with new URL
+        setImageFile(null); // Clear the file input state, as it's now uploaded
+      } else {
+        // No new file to upload. values.restaurantImageUrl already reflects the desired state:
+        // - It's the existing URL if no changes were made to the image.
+        // - It's null if the user selected a new file (which nulled it via handleImageChange) and then removed the selection without submitting.
+        // - It's null if the user explicitly cleared an existing image (if such UI existed).
+        // So, settingsToSave.restaurantImageUrl is already correctly set from `...values`.
+        console.log("No new image file to upload. Using restaurantImageUrl from form values:", values.restaurantImageUrl);
+      }
+
+      console.log("Attempting to save settings to Firestore:", settingsToSave);
       await saveRestaurantSettings(settingsToSave);
       console.log("Settings saved successfully to Firestore.");
       toast({
         title: "Settings Updated",
         description: "Restaurant settings have been successfully saved.",
       });
-      if (imageUrl) setImagePreview(imageUrl); 
-      else if (!imageFile && !imageUrl) setImagePreview(null);
+
+      // Update preview to reflect the saved state
+      setImagePreview(settingsToSave.restaurantImageUrl || null);
+      form.reset(settingsToSave, { keepValues: false, keepDirty: false, keepDefaultValues: false }); // Reset form with new saved values
+
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
       console.error("Failed to save settings in onSubmit:", errMessage, error);
       toast({
         title: "Save Failed",
-        description: `Could not save settings: ${errMessage}. Please try again.`,
+        description: `Could not save settings: ${errMessage}. Please check console for details.`,
         variant: "destructive",
       });
     } finally {
-      console.log("onSubmit finally block. Resetting isUploading state.");
-      setIsUploading(false);
+      console.log("onSubmit finally block. Resetting loading state.");
+      setIsUploading(false); // Reset loading state
     }
   }
 
@@ -222,13 +228,14 @@ export default function SettingsPage() {
                     <Image src={imagePreview} alt="Restaurant preview" layout="fill" objectFit="cover" />
                   </div>
                 )}
-                 {!imagePreview && !form.getValues("restaurantImageUrl") && (
+                 {!imagePreview && ( // Show placeholder if no preview (could be initial or after clearing)
                   <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm flex items-center justify-center bg-muted/30">
                     <ImageIcon className="h-16 w-16 text-muted-foreground" />
                   </div>
                 )}
                 <FormDescription className="font-body">Upload an image for your restaurant (e.g., logo or a representative photo). Max 2MB.</FormDescription>
-                <FormMessage>{form.formState.errors.restaurantImageUrl?.message}</FormMessage>
+                {/* This specific FormMessage might not be directly tied to a Zod field if URL is handled manually */}
+                {form.formState.errors.restaurantImageUrl?.message && <p className="text-sm font-medium text-destructive">{form.formState.errors.restaurantImageUrl.message}</p>}
               </FormItem>
             </CardContent>
           </Card>
@@ -319,8 +326,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isUploading || isLoading}>
-            {form.formState.isSubmitting || isUploading ? (
+          <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isUploading || isLoading || form.formState.isSubmitting}>
+            {isUploading || form.formState.isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Saving...
               </>
@@ -335,4 +342,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
