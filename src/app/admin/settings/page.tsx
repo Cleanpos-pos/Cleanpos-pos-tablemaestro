@@ -65,7 +65,7 @@ export default function SettingsPage() {
 
   const fetchSettings = useCallback(async () => {
     setIsLoading(true);
-    console.log("Admin Settings Page: Auth state before fetching settings:", auth.currentUser);
+    console.log("Admin Settings Page: Auth state before fetching settings:", auth.currentUser ? auth.currentUser.uid : 'No user logged in');
     try {
       const settings = await getRestaurantSettings();
       if (settings) {
@@ -116,20 +116,27 @@ export default function SettingsPage() {
   };
 
   async function onSubmit(values: CombinedSettings) {
+    console.log("onSubmit called with values:", values);
+    console.log("Current imageFile:", imageFile);
+    console.log("Current auth user for save:", auth.currentUser ? auth.currentUser.uid : 'No user');
+
     setIsUploading(true); 
     let imageUrl = values.restaurantImageUrl;
 
     if (imageFile) {
+      console.log("Attempting to upload image...");
       try {
         const timestamp = Date.now();
         const uniqueFileName = `profileImage_${timestamp}.${imageFile.name.split('.').pop()}`;
         imageUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
         setImageFile(null); 
+        console.log("Image uploaded successfully:", imageUrl);
       } catch (error) {
-        console.error("Image upload failed:", error);
+        const errMessage = error instanceof Error ? error.message : String(error);
+        console.error("Image upload failed:", errMessage, error);
         toast({
           title: "Image Upload Failed",
-          description: "Could not upload restaurant image. Please try again.",
+          description: `Could not upload restaurant image: ${errMessage}. Please try again.`,
           variant: "destructive",
         });
         setIsUploading(false);
@@ -141,9 +148,11 @@ export default function SettingsPage() {
       ...values,
       restaurantImageUrl: imageUrl || null, 
     };
+    console.log("Attempting to save settings to Firestore:", settingsToSave);
 
     try {
       await saveRestaurantSettings(settingsToSave);
+      console.log("Settings saved successfully to Firestore.");
       toast({
         title: "Settings Updated",
         description: "Restaurant settings have been successfully saved.",
@@ -151,13 +160,15 @@ export default function SettingsPage() {
       if (imageUrl) setImagePreview(imageUrl); 
       else if (!imageFile && !imageUrl) setImagePreview(null);
     } catch (error) {
-      console.error("Failed to save settings:", error);
+      const errMessage = error instanceof Error ? error.message : String(error);
+      console.error("Failed to save settings in onSubmit:", errMessage, error);
       toast({
         title: "Save Failed",
-        description: `Could not save settings: ${error instanceof Error ? error.message : String(error)}. Please try again.`,
+        description: `Could not save settings: ${errMessage}. Please try again.`,
         variant: "destructive",
       });
     } finally {
+      console.log("onSubmit finally block. Resetting isUploading state.");
       setIsUploading(false);
     }
   }
@@ -324,3 +335,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
