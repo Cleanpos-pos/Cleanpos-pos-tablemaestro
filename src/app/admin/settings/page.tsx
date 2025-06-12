@@ -39,8 +39,8 @@ const restaurantProfileSchema = z.object({
     .nullable() 
     .optional() 
     .default(null),
-  restaurantImageUrl: z.string().url("Invalid URL.").nullable().optional(),
-  restaurantGalleryUrls: z.array(z.string().url("Invalid URL.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
+  restaurantImageUrl: z.string().url("Invalid URL for main image.").nullable().optional(),
+  restaurantGalleryUrls: z.array(z.string().url("Invalid URL for gallery image.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
 });
 
 const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema);
@@ -124,16 +124,11 @@ export default function SettingsPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      // Do not set form.setValue for restaurantImageUrl to "" here to avoid premature validation.
-      // The presence of 'imageFile' will be handled in onSubmit.
-      // Mark form dirty if not already (optional, react-hook-form might detect via other means)
       if (!form.formState.isDirty) {
-        form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true });
+        form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true }); // Mark form dirty
       }
     } else {
-        // User cancelled file selection or no file selected
         setImageFile(null);
-        // Revert preview to the one from form values if it exists, otherwise null
         setImagePreview(form.getValues("restaurantImageUrl") || null); 
     }
   };
@@ -151,18 +146,14 @@ export default function SettingsPage() {
         setGalleryImagePreviews(newGalleryImagePreviews);
       };
       reader.readAsDataURL(file);
-      // Do not set form.setValue for the gallery URL to "" here.
-      // The presence of 'galleryImageFiles[index]' will be handled in onSubmit.
       if (!form.formState.isDirty) {
-        form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true });
+         form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true }); // Mark form dirty
       }
     } else {
-      // User cleared the file input for this slot or cancelled selection
       newGalleryImageFiles[index] = null;
       newGalleryImagePreviews[index] = null; 
       setGalleryImagePreviews(newGalleryImagePreviews);
-      // Explicitly set the form value for this slot to null, as 'null' is valid for the URL schema.
-      form.setValue(`restaurantGalleryUrls.${index}` as any, null, { shouldDirty: true, shouldValidate: true });
+      form.setValue(`restaurantGalleryUrls.${index}` as any, null, { shouldDirty: true, shouldValidate: false }); // Set to null, don't validate yet
     }
     setGalleryImageFiles(newGalleryImageFiles);
   };
@@ -184,14 +175,12 @@ export default function SettingsPage() {
 
     setIsSaving(true);
     
-    // Start with validated form values. imageFile and galleryImageFiles will override URLs if they exist.
     const settingsToSave: CombinedSettings = { ...values };
     if (settingsToSave.restaurantName === undefined) {
         settingsToSave.restaurantName = null;
     }
 
     try {
-      // Handle main restaurant image
       if (imageFile) {
         console.log("Attempting to upload new main restaurant image...");
         const timestamp = Date.now();
@@ -199,20 +188,18 @@ export default function SettingsPage() {
         const newUploadedUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
         console.log("Main image uploaded successfully. New URL:", newUploadedUrl);
         settingsToSave.restaurantImageUrl = newUploadedUrl;
-      } else if (imagePreview === null && values.restaurantImageUrl) { 
-        // If no new file, but preview is null (meaning user cleared it somehow, though no direct button)
-        // and there was an old URL, set it to null.
+      } else if (imagePreview === null && values.restaurantImageUrl !== null) { 
+        // User cleared the preview for an existing image (though no direct button for this, could happen if input is cleared and somehow preview also goes null)
+        // We will assume if imagePreview is null and there *was* a URL, they want to remove it.
         settingsToSave.restaurantImageUrl = null;
       }
-      // If imageFile is null and imagePreview has a value (original image), values.restaurantImageUrl is used from spread.
+      // If imageFile is null AND imagePreview has a value, it means the original image is kept (already in values.restaurantImageUrl).
 
-
-      // Handle gallery images
       const finalGalleryUrls: (string | null)[] = [...(values.restaurantGalleryUrls || Array(6).fill(null))];
       
       for (let i = 0; i < 6; i++) {
         const file = galleryImageFiles[i];
-        if (file) { // New file in this slot
+        if (file) { 
           const timestamp = Date.now();
           const uniqueFileName = `gallery/slot_${i}_${timestamp}_${file.name.replace(/\s+/g, '_')}`;
           try {
@@ -227,15 +214,13 @@ export default function SettingsPage() {
               description: uploadError instanceof Error ? uploadError.message : "Could not upload image.",
               variant: "destructive",
             });
-            // Keep existing URL from `values` if upload fails, or null if it was a new slot & it failed
             finalGalleryUrls[i] = values.restaurantGalleryUrls?.[i] || null; 
           }
-        } else {
-            // No new file for this slot.
-            // The value in `values.restaurantGalleryUrls[i]` (which is now in finalGalleryUrls[i] via spread)
-            // is correct (it's either the original URL, or null if cleared via handleGalleryImageChange).
-            // So, no specific action needed here for finalGalleryUrls[i] if no file.
+        } else if (galleryImagePreviews[i] === null && values.restaurantGalleryUrls?.[i] !== null) {
+            // If a gallery preview was cleared (meaning file input also cleared) for an existing image
+            finalGalleryUrls[i] = null;
         }
+        // If file is null and preview is not null, means existing image is kept (already in finalGalleryUrls[i] via values).
       }
       settingsToSave.restaurantGalleryUrls = finalGalleryUrls.map(url => url === undefined ? null : url);
       
@@ -327,8 +312,7 @@ export default function SettingsPage() {
                     <ImageIcon className="h-16 w-16 text-muted-foreground" />
                   </div>
                 )}
-                <FormDescription className="font-body">Upload an image for your restaurant (e.g., logo or a representative photo). Max 2MB.</FormDescription>
-                {/* Display Zod error for restaurantImageUrl if it occurs during submit */}
+                <FormDescription className="font-body">Upload an image to be chosen as your restaurant's main logo or representative photo. Max 2MB.</FormDescription>
                 <FormField
                   control={form.control}
                   name="restaurantImageUrl"
@@ -365,7 +349,6 @@ export default function SettingsPage() {
                             <ImageIcon className="h-12 w-12 text-muted-foreground" />
                           </div>
                         )}
-                        {/* Display Zod error for individual gallery URL if it occurs during submit */}
                         <FormField
                           control={form.control}
                           name={`restaurantGalleryUrls.${index}`}
@@ -374,8 +357,7 @@ export default function SettingsPage() {
                       </div>
                     ))}
                   </div>
-                  <FormDescription className="font-body mt-2">Upload images for your restaurant's gallery. Max 2MB each. Clear an input to remove an image.</FormDescription>
-                   {/* Display Zod error for the whole gallery array (e.g. max items) */}
+                  <FormDescription className="font-body mt-2">Upload images to be chosen for your restaurant's gallery. Max 2MB each. Clear an input to remove an image.</FormDescription>
                    <FormMessage /> 
                 </FormItem>
                 )}
@@ -485,4 +467,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
