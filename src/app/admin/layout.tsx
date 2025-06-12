@@ -1,12 +1,22 @@
+
+"use client";
+
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePathname } from "next/navigation";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  if (pathname === "/admin/login") {
+    return <>{children}</>;
+  }
+
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen bg-background">
