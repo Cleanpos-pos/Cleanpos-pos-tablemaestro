@@ -49,28 +49,42 @@ export default function LoginForm() {
       });
       router.push("/admin/dashboard");
     } catch (error: any) {
-      console.error("Firebase login error:", error);
-      let errorMessage = "Login failed. Please check your credentials and try again.";
-      
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = "Invalid email or password. Please try again.";
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
-      } else if (error.code === 'auth/network-request-failed') {
-        errorMessage = "Network error. Please check your internet connection and try again.";
-      } else if (error.code === 'auth/visibility-check-was-unavailable') {
-        errorMessage = "Login check failed. This might be due to browser settings (e.g., blocked cookies if in an iframe) or network issues. Please ensure cookies are enabled for Firebase, try a different browser/incognito mode, and then retry logging in.";
+      console.error("Firebase login error full object:", error); 
+      let errorMessage = "Login failed. Please check your credentials and try again."; // Default message
+      let errorCategory = "generic";
+
+      if (error && error.code) { 
+        console.log(`Firebase login attempt failed with error code: ${error.code}`);
+        if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-email') {
+          errorMessage = "Invalid email or password. Please try again.";
+          errorCategory = "invalid-credentials";
+        } else if (error.code === 'auth/too-many-requests') {
+          errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
+          errorCategory = "too-many-requests";
+        } else if (error.code === 'auth/network-request-failed') {
+          errorMessage = "Network error. Please check your internet connection and try again.";
+          errorCategory = "network-error";
+        } else if (error.code === 'auth/visibility-check-was-unavailable') {
+          errorMessage = "Login check failed. This might be due to browser settings (e.g., blocked cookies if in an iframe) or network issues. Please ensure cookies are enabled for Firebase, try a different browser/incognito mode, and then retry logging in.";
+          errorCategory = "visibility-check";
+        } else if (error.code === 'auth/user-disabled') {
+          errorMessage = "This user account has been disabled. Please contact support.";
+          errorCategory = "user-disabled";
+        }
+      } else {
+        console.log("Firebase login attempt failed with an error that has no 'code' property or error object is null/undefined.");
       }
+      
+      console.log(`Login error category determined as: ${errorCategory}, resulting message: "${errorMessage}"`);
       
       toast({
         title: "Login Failed",
         description: errorMessage,
         variant: "destructive",
       });
-      // Optionally set form errors if you want to highlight specific fields
       form.setError("email", { type: "manual", message: " " }); 
       form.setError("password", { type: "manual", message: " " });
-      form.setValue("password",""); // Clear password field
+      form.setValue("password","");
     }
   }
 
