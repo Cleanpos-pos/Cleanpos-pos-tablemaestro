@@ -3,22 +3,16 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // User-specific files: Only authenticated users can write to their own folder.
-    // Example: users/{uid}/profile.jpg
-    match /users/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+    // Rules for the restaurant's profile image path
+    match /restaurant/{imageFileName} {
+      // Allow public read access to restaurant images (e.g., for display on booking pages)
+      allow read: if true;
+      // Allow write (upload, update, delete) access only for authenticated users (admins)
+      allow write: if request.auth != null;
     }
 
-    // Restaurant-specific files (e.g., logo, general images)
-    // Allow authenticated users (admins) to read and write to the 'restaurant' folder.
-    // You might want to add more specific role-based checks here if you implement roles.
-    match /restaurant/{allPaths=**} {
-      allow read: if true; // Restaurant images are often public
-      allow write: if request.auth != null; // Only authenticated users (admins) can upload/change
-    }
-
-    // Default deny for any other paths
+    // Deny all other reads and writes to any other paths by default for security.
+    // If you add other storage features, you'll need to add rules for those paths.
     match /{allPaths=**} {
       allow read, write: if false;
     }
