@@ -6,7 +6,7 @@ import {
   setDoc,
   getDoc,
   serverTimestamp,
-  updateDoc, // Added updateDoc to imports, though not used in this snippet, good practice
+  // updateDoc, // Added updateDoc to imports, though not used in this snippet, good practice
 } from 'firebase/firestore';
 
 const SETTINGS_COLLECTION = 'restaurantConfig';
@@ -15,8 +15,41 @@ const MAIN_SETTINGS_DOC_ID = 'main'; // Using a single document for all general 
 export const saveRestaurantSettings = async (settings: CombinedSettings): Promise<void> => {
   try {
     const settingsRef = doc(db, SETTINGS_COLLECTION, MAIN_SETTINGS_DOC_ID);
+
+    // Create a clean object for Firestore, ensuring no undefined values are passed
+    const dataToSave: Partial<CombinedSettings> = {};
+    Object.keys(settings).forEach(keyStr => {
+      const key = keyStr as keyof CombinedSettings;
+      if (settings[key] !== undefined) {
+        (dataToSave as any)[key] = settings[key];
+      } else {
+        // If a field is undefined, and it's one that should be null (like optional strings/images)
+        // Firestore's merge behavior handles missing keys, but explicit undefined is an error.
+        // It's better to ensure the object sent to Firestore either has a valid value (e.g. null) or omits the key.
+        // The Zod schema and form logic should ideally ensure `settings` doesn't have problematic `undefined`.
+        // If `restaurantName` or image URLs could be undefined here, convert them to null.
+        if (key === 'restaurantName' || key === 'restaurantImageUrl') {
+          (dataToSave as any)[key] = null;
+        } else if (key === 'restaurantGalleryUrls') {
+           // Ensure gallery array elements are not undefined
+          (dataToSave as any)[key] = (settings.restaurantGalleryUrls || []).map(url => url === undefined ? null : url);
+        }
+        // For other fields, if undefined means "don't change" or "remove", `merge:true` handles omission.
+        // If it must be null, it should be explicitly set.
+      }
+    });
+    // Ensure top-level optional fields that can be null are explicitly null if undefined
+    if (dataToSave.restaurantName === undefined) dataToSave.restaurantName = null;
+    if (dataToSave.restaurantImageUrl === undefined) dataToSave.restaurantImageUrl = null;
+    if (dataToSave.restaurantGalleryUrls) {
+      dataToSave.restaurantGalleryUrls = dataToSave.restaurantGalleryUrls.map(url => url === undefined ? null : url);
+    } else {
+      dataToSave.restaurantGalleryUrls = Array(6).fill(null);
+    }
+
+
     await setDoc(settingsRef, {
-      ...settings,
+      ...dataToSave,
       updatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
@@ -35,15 +68,17 @@ export const getRestaurantSettings = async (): Promise<CombinedSettings | null> 
     if (docSnap.exists()) {
       const data = docSnap.data();
       console.log(`[settingsService] Successfully fetched settings from: ${settingsPath}`);
+      // Ensure that fields that can be null are defaulted to null if missing from Firestore
       return {
         minAdvanceReservationHours: data.minAdvanceReservationHours,
         maxReservationDurationHours: data.maxReservationDurationHours,
         maxGuestsPerBooking: data.maxGuestsPerBooking,
         timeSlotIntervalMinutes: data.timeSlotIntervalMinutes,
         bookingLeadTimeDays: data.bookingLeadTimeDays,
-        restaurantName: data.restaurantName,
-        restaurantImageUrl: data.restaurantImageUrl,
-      } as CombinedSettings;
+        restaurantName: data.restaurantName ?? null,
+        restaurantImageUrl: data.restaurantImageUrl ?? null,
+        restaurantGalleryUrls: (data.restaurantGalleryUrls || Array(6).fill(null)).map((url: string | null | undefined) => url ?? null),
+      } as CombinedSettings; // Type assertion is okay if we ensure all fields are covered
     } else {
       console.warn(`[settingsService] No settings document found at: ${settingsPath}`);
       return null;

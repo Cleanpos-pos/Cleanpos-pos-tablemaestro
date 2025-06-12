@@ -41,7 +41,7 @@ export interface ReservationSettings {
 }
 
 export interface RestaurantProfileSettings {
-  restaurantName?: string;
+  restaurantName?: string | null; // Changed to allow null
   restaurantImageUrl?: string | null;
   restaurantGalleryUrls?: (string | null)[]; // Array of up to 6 image URLs or nulls
 }
