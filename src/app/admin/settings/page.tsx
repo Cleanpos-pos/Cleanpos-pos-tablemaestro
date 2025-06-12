@@ -35,10 +35,10 @@ const reservationSettingsSchema = z.object({
 
 const restaurantProfileSchema = z.object({
   restaurantName: z.string().max(100, "Name cannot exceed 100 characters.")
-    .transform(val => val === "" ? null : val) // Transform empty string to null
-    .nullable() // Allow null
-    .optional() // Allow undefined from form state before default
-    .default(null), // Default to null if undefined
+    .transform(val => val === "" ? null : val) 
+    .nullable() 
+    .optional() 
+    .default(null),
   restaurantImageUrl: z.string().url("Invalid URL.").nullable().optional(),
   restaurantGalleryUrls: z.array(z.string().url("Invalid URL.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
 });
@@ -76,9 +76,8 @@ export default function SettingsPage() {
     try {
       const settings = await getRestaurantSettings();
       if (settings) {
-        // Ensure fetched settings conform to null rather than undefined for optional fields
         const sanitizedSettings = {
-          ...defaultSettingsData, // Start with defaults to ensure all fields are present
+          ...defaultSettingsData, 
           ...settings,
           restaurantName: settings.restaurantName ?? null,
           restaurantImageUrl: settings.restaurantImageUrl ?? null,
@@ -104,7 +103,7 @@ export default function SettingsPage() {
         description: `Could not retrieve settings: ${errorMessage}. Using default values.`,
         variant: "destructive",
       });
-      form.reset(defaultSettingsData); // Reset to application defaults on error
+      form.reset(defaultSettingsData); 
       setImagePreview(defaultSettingsData.restaurantImageUrl || null);
       setGalleryImagePreviews(Array(6).fill(null));
     } finally {
@@ -125,9 +124,16 @@ export default function SettingsPage() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      form.setValue("restaurantImageUrl", "", { shouldValidate: true, shouldDirty: true }); // Set to empty string to signify change, will be handled in submit
+      // Do not set form.setValue for restaurantImageUrl to "" here to avoid premature validation.
+      // The presence of 'imageFile' will be handled in onSubmit.
+      // Mark form dirty if not already (optional, react-hook-form might detect via other means)
+      if (!form.formState.isDirty) {
+        form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true });
+      }
     } else {
+        // User cancelled file selection or no file selected
         setImageFile(null);
+        // Revert preview to the one from form values if it exists, otherwise null
         setImagePreview(form.getValues("restaurantImageUrl") || null); 
     }
   };
@@ -142,16 +148,21 @@ export default function SettingsPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         newGalleryImagePreviews[index] = reader.result as string;
-        setGalleryImagePreviews([...newGalleryImagePreviews]); // Ensure state update
+        setGalleryImagePreviews(newGalleryImagePreviews);
       };
       reader.readAsDataURL(file);
-       // Mark form dirty for this slot, actual URL is set during submit
-      form.setValue(`restaurantGalleryUrls.${index}` as any, "", { shouldDirty: true });
+      // Do not set form.setValue for the gallery URL to "" here.
+      // The presence of 'galleryImageFiles[index]' will be handled in onSubmit.
+      if (!form.formState.isDirty) {
+        form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true });
+      }
     } else {
+      // User cleared the file input for this slot or cancelled selection
       newGalleryImageFiles[index] = null;
       newGalleryImagePreviews[index] = null; 
-      setGalleryImagePreviews([...newGalleryImagePreviews]); // Ensure state update
-      form.setValue(`restaurantGalleryUrls.${index}` as any, null, { shouldDirty: true });
+      setGalleryImagePreviews(newGalleryImagePreviews);
+      // Explicitly set the form value for this slot to null, as 'null' is valid for the URL schema.
+      form.setValue(`restaurantGalleryUrls.${index}` as any, null, { shouldDirty: true, shouldValidate: true });
     }
     setGalleryImageFiles(newGalleryImageFiles);
   };
@@ -173,14 +184,11 @@ export default function SettingsPage() {
 
     setIsSaving(true);
     
-    // Use the validated values from the form, Zod schema should ensure restaurantName is string or null
+    // Start with validated form values. imageFile and galleryImageFiles will override URLs if they exist.
     const settingsToSave: CombinedSettings = { ...values };
-     // The Zod transform and default should handle restaurantName correctly to be string or null.
-    // Explicitly ensure undefined becomes null if Zod somehow didn't catch it (defensive)
     if (settingsToSave.restaurantName === undefined) {
         settingsToSave.restaurantName = null;
     }
-
 
     try {
       // Handle main restaurant image
@@ -191,15 +199,16 @@ export default function SettingsPage() {
         const newUploadedUrl = await uploadImageAndGetURL(imageFile, `restaurant/${uniqueFileName}`);
         console.log("Main image uploaded successfully. New URL:", newUploadedUrl);
         settingsToSave.restaurantImageUrl = newUploadedUrl;
-      } else if (imagePreview === null && values.restaurantImageUrl !== null) { 
-        // Image was present and then cleared by user (preview is null, but form might have old URL)
+      } else if (imagePreview === null && values.restaurantImageUrl) { 
+        // If no new file, but preview is null (meaning user cleared it somehow, though no direct button)
+        // and there was an old URL, set it to null.
         settingsToSave.restaurantImageUrl = null;
       }
-      // else settingsToSave.restaurantImageUrl already reflects the current URL or null if not set
+      // If imageFile is null and imagePreview has a value (original image), values.restaurantImageUrl is used from spread.
 
 
       // Handle gallery images
-      const finalGalleryUrls: (string | null)[] = [...(settingsToSave.restaurantGalleryUrls || Array(6).fill(null))];
+      const finalGalleryUrls: (string | null)[] = [...(values.restaurantGalleryUrls || Array(6).fill(null))];
       
       for (let i = 0; i < 6; i++) {
         const file = galleryImageFiles[i];
@@ -218,17 +227,17 @@ export default function SettingsPage() {
               description: uploadError instanceof Error ? uploadError.message : "Could not upload image.",
               variant: "destructive",
             });
-            // Keep existing URL if upload fails, or null if it was a new slot & it failed
-            finalGalleryUrls[i] = settingsToSave.restaurantGalleryUrls?.[i] || null; 
+            // Keep existing URL from `values` if upload fails, or null if it was a new slot & it failed
+            finalGalleryUrls[i] = values.restaurantGalleryUrls?.[i] || null; 
           }
-        } else if (!galleryImagePreviews[i] && finalGalleryUrls[i] !== null) { 
-          // No new file, and preview is null, means existing image in this slot was cleared by user
-          finalGalleryUrls[i] = null;
+        } else {
+            // No new file for this slot.
+            // The value in `values.restaurantGalleryUrls[i]` (which is now in finalGalleryUrls[i] via spread)
+            // is correct (it's either the original URL, or null if cleared via handleGalleryImageChange).
+            // So, no specific action needed here for finalGalleryUrls[i] if no file.
         }
-        // If galleryImageFiles[i] is null AND galleryImagePreviews[i] exists, it means an existing image is being kept.
-        // finalGalleryUrls[i] from the initial spread is correct.
       }
-      settingsToSave.restaurantGalleryUrls = finalGalleryUrls.map(url => url === undefined ? null : url); // Final safety for undefined
+      settingsToSave.restaurantGalleryUrls = finalGalleryUrls.map(url => url === undefined ? null : url);
       
       console.log("Attempting to save settings to Firestore:", settingsToSave);
       await saveRestaurantSettings(settingsToSave);
@@ -238,7 +247,6 @@ export default function SettingsPage() {
         description: "Restaurant settings have been successfully saved.",
       });
 
-      // Reset form with new saved values to reflect changes and clear dirty state
       const newFormValues = {
         ...settingsToSave,
         restaurantName: settingsToSave.restaurantName ?? null,
@@ -251,7 +259,6 @@ export default function SettingsPage() {
       
       setGalleryImageFiles(Array(6).fill(null)); 
       setGalleryImagePreviews([...(newFormValues.restaurantGalleryUrls || Array(6).fill(null))]);
-
 
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
@@ -321,10 +328,14 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <FormDescription className="font-body">Upload an image for your restaurant (e.g., logo or a representative photo). Max 2MB.</FormDescription>
-                {form.formState.errors.restaurantImageUrl?.message && <p className="text-sm font-medium text-destructive">{form.formState.errors.restaurantImageUrl.message}</p>}
+                {/* Display Zod error for restaurantImageUrl if it occurs during submit */}
+                <FormField
+                  control={form.control}
+                  name="restaurantImageUrl"
+                  render={() => <FormMessage />} 
+                />
               </FormItem>
 
-              {/* Restaurant Gallery Section */}
               <FormField
                 control={form.control}
                 name="restaurantGalleryUrls"
@@ -354,11 +365,18 @@ export default function SettingsPage() {
                             <ImageIcon className="h-12 w-12 text-muted-foreground" />
                           </div>
                         )}
+                        {/* Display Zod error for individual gallery URL if it occurs during submit */}
+                        <FormField
+                          control={form.control}
+                          name={`restaurantGalleryUrls.${index}`}
+                          render={() => <FormMessage />}
+                        />
                       </div>
                     ))}
                   </div>
                   <FormDescription className="font-body mt-2">Upload images for your restaurant's gallery. Max 2MB each. Clear an input to remove an image.</FormDescription>
-                   <FormMessage />
+                   {/* Display Zod error for the whole gallery array (e.g. max items) */}
+                   <FormMessage /> 
                 </FormItem>
                 )}
                 />
@@ -467,3 +485,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
