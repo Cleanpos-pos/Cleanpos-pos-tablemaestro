@@ -3,18 +3,19 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Rules for the restaurant's profile image path
-    match /restaurant/{imageFileName} {
-      // Allow public read access to restaurant images (e.g., for display on booking pages)
+    // Allow public read access for files under the 'restaurant/' path
+    // This is useful if you want to display restaurant images publicly
+    match /restaurant/{allPaths=**} {
       allow read: if true;
-      // Allow write (upload, update, delete) access only for authenticated users (admins)
+      // Only allow authenticated users to write (upload, update, delete)
+      // to the restaurant path and its subdirectories.
       allow write: if request.auth != null;
     }
 
-    // Deny all other reads and writes to any other paths by default for security.
-    // If you add other storage features, you'll need to add rules for those paths.
-    match /{allPaths=**} {
-      allow read, write: if false;
-    }
+    // For any other paths, you might want to deny all access by default
+    // or add specific rules. Example:
+    // match /{allOtherPaths=**} {
+    //   allow read, write: if false;
+    // }
   }
 }
