@@ -17,7 +17,6 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import Logo from "@/components/shared/Logo";
-import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   BookOpenText,
@@ -25,7 +24,6 @@ import {
   Settings,
   LogOut,
   UserCircle,
-  Sparkles, // Added for AI Waitlist Assistant
 } from "lucide-react";
 
 const menuItems = [
@@ -33,7 +31,6 @@ const menuItems = [
   { href: "/admin/bookings", label: "Bookings", icon: BookOpenText },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/settings", label: "Settings", icon: Settings },
-  // { href: "/admin/waitlist-assistant", label: "AI Waitlist", icon: Sparkles }, // Removed as per previous request
 ];
 
 export default function AdminSidebar() {
