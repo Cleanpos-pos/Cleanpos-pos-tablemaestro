@@ -1,5 +1,5 @@
 
-import { storage, auth } from '@/config/firebase'; // Ensure auth is imported
+import { storage, auth } from '@/config/firebase'; 
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 /**
@@ -9,22 +9,25 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
  * @returns A promise that resolves with the download URL of the uploaded image.
  */
 export const uploadImageAndGetURL = async (file: File, path: string): Promise<string> => {
-  const currentUser = auth.currentUser; // Get current user AT THE TIME OF THE CALL
+  const currentUser = auth.currentUser; 
+  const currentBucket = storage.app.options.storageBucket || "NOT_CONFIGURED";
   
-  console.log(`[storageService] Attempting upload for path: "${path}"`);
+  console.log(`[storageService] Attempting upload for path: "${path}" to bucket: "${currentBucket}"`);
+  
   if (currentUser) {
     console.log(`[storageService] Authenticated user UID at time of upload attempt: ${currentUser.uid}`);
-    // Extract the userId from the path to compare, assuming path format "restaurant/actual_userId/filename"
     const pathParts = path.split('/');
     if (pathParts.length >= 2 && pathParts[0] === 'restaurant') {
       const userIdInPath = pathParts[1];
       console.log(`[storageService] User ID extracted from path: ${userIdInPath}`);
       if (currentUser.uid === userIdInPath) {
-        console.log('[storageService] Path user ID matches authenticated user UID. Rule check should pass if user is authenticated.');
+        console.log('[storageService] Path user ID matches authenticated user UID. Rule check should pass if user is authenticated and rules are correct.');
       } else {
         console.warn('[storageService] MISMATCH! Path user ID does NOT match authenticated user UID. Storage rule will likely fail.');
         console.warn(`[storageService] Auth UID: ${currentUser.uid}, Path UID: ${userIdInPath}`);
       }
+    } else {
+      console.warn(`[storageService] Path "${path}" does not seem to follow the 'restaurant/userId/...' structure. This might cause issues with security rules.`);
     }
   } else {
     console.warn('[storageService] CRITICAL: No authenticated user found (auth.currentUser is null) at time of upload attempt! Storage rules requiring auth will fail.');
@@ -32,9 +35,9 @@ export const uploadImageAndGetURL = async (file: File, path: string): Promise<st
 
   try {
     const storageRef = ref(storage, path);
-    console.log('[storageService] storageRef created. Calling uploadBytes...');
+    console.log('[storageService] storageRef created for full path:', storageRef.toString(), '. Calling uploadBytes...');
     const snapshot = await uploadBytes(storageRef, file);
-    console.log(`[storageService] Upload successful for path: ${path}. Snapshot:`, snapshot);
+    console.log(`[storageService] Upload successful for path: ${path}. Snapshot metadata:`, snapshot.metadata);
     const downloadURL = await getDownloadURL(snapshot.ref);
     console.log(`[storageService] Download URL for ${path}: ${downloadURL}`);
     return downloadURL;
@@ -57,9 +60,10 @@ export const uploadImageAndGetURL = async (file: File, path: string): Promise<st
              } else if (firebaseError.code === 'storage/retry-limit-exceeded') {
                 detailedErrorMessage += ' Retry limit exceeded: Network issue or Firebase server issue. Try again later.';
                 console.error('[storageService] Retry limit exceeded: Network issue or Firebase server issue. Try again later.');
+             } else {
+                detailedErrorMessage += ` Check your Firebase Storage security rules. The current user (UID: ${currentUser?.uid || 'none'}) may not have permission to write to the path "${path}".`;
              }
         }
-         // Log the full error object for more details in console
         console.error("[storageService] Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
     } else {
         detailedErrorMessage += ` Unknown error: ${String(error)}.`;
