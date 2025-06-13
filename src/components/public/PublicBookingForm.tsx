@@ -2,17 +2,17 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription, // Added FormDescription here
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
@@ -20,323 +20,266 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, User, Mail, Phone, Clock, Users, StickyNote, Send, Loader2, AlertCircle, Info } from "lucide-react";
-import { format, parse, addHours, isBefore, startOfDay, getDay, set } from "date-fns";
+import { CalendarIcon, User, Mail, Phone, Clock, Users, StickyNote, Send, Loader2, AlertCircle } from "lucide-react";
+import { format, add, parse, set, getDay, isBefore, startOfDay, addDays, eachMinuteOfInterval, isSameDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import type { BookingInput, CombinedSettings, DaySchedule, RestaurantSchedule } from "@/lib/types";
+import type { CombinedSettings, RestaurantSchedule, DaySchedule, TimeSlot as ScheduleTimeSlot, BookingInput } from "@/lib/types";
+import { getPublicRestaurantSettings, getPublicRestaurantSchedule } from "@/services/settingsService";
 import { addBookingToFirestore } from "@/services/bookingService";
-import { getPublicRestaurantSchedule, getPublicRestaurantSettings } from "@/services/settingsService";
-import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const publicBookingFormSchema = z.object({
+const publicBookingFormSchema = (settings: CombinedSettings | null) => z.object({
   guestName: z.string().min(2, "Name must be at least 2 characters."),
   guestEmail: z.string().email("Invalid email address.").optional().or(z.literal('')),
   guestPhone: z.string().min(10, "Phone number seems too short.").optional().or(z.literal('')),
-  date: z.date({ required_error: "Please select a date for your booking." }),
-  time: z.string({ required_error: "Please select an available time slot."}).regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format."),
-  partySize: z.coerce.number().min(1, "At least 1 guest.").max(20, "For parties larger than 20, please contact us directly."), // Max will be dynamically set
+  partySize: z.coerce.number().min(1, "At least 1 guest.").max(settings?.maxGuestsPerBooking || 20, `Maximum ${settings?.maxGuestsPerBooking || 20} guests.`),
+  date: z.date({ required_error: "A date is required." }),
   notes: z.string().max(200, "Notes cannot exceed 200 characters.").optional().or(z.literal('')),
-}).refine(data => {
-    if (data.date && data.time) {
-        const bookingDateTime = parse(`${format(data.date, 'yyyy-MM-dd')} ${data.time}`, 'yyyy-MM-dd HH:mm', new Date());
-        // Basic check: booking date and time should not be in the past. More advanced check with minAdvanceReservationHours happens later.
-        return !isBefore(bookingDateTime, new Date());
-    }
-    return true;
-}, {
-    message: "Booking date and time cannot be in the past.",
-    path: ["time"],
 });
 
-
-type PublicBookingFormValues = z.infer<typeof publicBookingFormSchema>;
+type PublicBookingFormValues = z.infer<ReturnType<typeof publicBookingFormSchema>>;
 
 export default function PublicBookingForm() {
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [schedule, setSchedule] = useState<RestaurantSchedule | null>(null);
+  const router = useRouter();
   const [settings, setSettings] = useState<CombinedSettings | null>(null);
-  const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
+  const [schedule, setSchedule] = useState<RestaurantSchedule | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-  const [generalError, setGeneralError] = useState<string | null>(null);
+
+  const fetchRestaurantInfo = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [fetchedSettings, fetchedSchedule] = await Promise.all([
+        getPublicRestaurantSettings(),
+        getPublicRestaurantSchedule(),
+      ]);
+      setSettings(fetchedSettings);
+      setSchedule(fetchedSchedule);
+      if (!fetchedSettings || !fetchedSchedule) {
+        setError("Could not load complete restaurant information. Please try again later.");
+      }
+    } catch (err) {
+      console.error("Failed to fetch restaurant info:", err);
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
+      setError(`Could not load restaurant information: ${errorMessage}. Please try again later.`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRestaurantInfo();
+  }, [fetchRestaurantInfo]);
+
+  const formSchemaInstance = useMemo(() => publicBookingFormSchema(settings), [settings]);
+
+  const finalSchema = useMemo(() => {
+    if (selectedDate && settings && schedule) {
+      const dayOfWeek = format(selectedDate, 'eeee').toLowerCase() as DaySchedule['dayOfWeek'];
+      const daySchedule = schedule.find(d => d.dayOfWeek === dayOfWeek);
+      if (daySchedule && daySchedule.isOpen && daySchedule.timeSlots.length > 0) {
+        return formSchemaInstance.extend({
+          time: z.string({ required_error: "Please select a time." }),
+        });
+      }
+    }
+    return formSchemaInstance;
+  }, [selectedDate, settings, schedule, formSchemaInstance]);
 
 
-  const form = useForm<PublicBookingFormValues>({
-    resolver: zodResolver(publicBookingFormSchema),
+  const form = useForm<PublicBookingFormValues & { time?: string }>({
+    resolver: zodResolver(finalSchema),
     defaultValues: {
       guestName: "",
       guestEmail: "",
       guestPhone: "",
-      date: undefined,
-      time: "",
       partySize: 1,
+      date: undefined,
+      time: undefined,
       notes: "",
     },
   });
-  
-  const { watch, setValue } = form;
-  const watchedDate = watch("date");
-  const watchedPartySize = watch("partySize");
 
-  const loadConfig = useCallback(async () => {
-    setIsLoading(true);
-    setGeneralError(null);
-    try {
-      const [fetchedSettings, fetchedSchedule] = await Promise.all([
-        getPublicRestaurantSettings(),
-        getPublicRestaurantSchedule()
-      ]);
-      setSettings(fetchedSettings);
-      setSchedule(fetchedSchedule);
-
-      // Update party size validation based on fetched settings
-      const newSchema = publicBookingFormSchema.extend({
-        partySize: z.coerce.number().min(1, "At least 1 guest.").max(fetchedSettings.maxGuestsPerBooking || 20, `For parties larger than ${fetchedSettings.maxGuestsPerBooking || 20}, please contact us directly.`),
-      });
-      form.reset(form.getValues(), {
-        // @ts-ignore TODO: Fix this type issue with zodResolver update if possible
-        resolver: zodResolver(newSchema),
-      });
-
-
-    } catch (error) {
-      console.error("Failed to load restaurant configuration:", error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-      setGeneralError(`Could not load restaurant information: ${errorMessage}. Please try again later.`);
-      toast({
-        title: "Error",
-        description: `Could not load restaurant information: ${errorMessage}`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+  const handleDateSelect = (date: Date | undefined) => {
+    setSelectedDate(date);
+    form.setValue("date", date!, { shouldValidate: true });
+    form.setValue("time", undefined, { shouldValidate: true }); // Reset time when date changes
+    if (date) {
+      setIsDatePickerOpen(false); // Close picker after selection
     }
-  }, [form, toast]);
+  };
 
-  useEffect(() => {
-    loadConfig();
-  }, [loadConfig]);
+  const availableTimeSlots = useMemo(() => {
+    if (!selectedDate || !schedule || !settings) return [];
 
-  useEffect(() => {
-    if (watchedDate && schedule && settings) {
-      const dayOfWeekIndex = getDay(watchedDate); // Sunday = 0, Monday = 1, ...
-      const dayNames: DaySchedule['dayOfWeek'][] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const currentDaySchedule = schedule.find(day => day.dayOfWeek.toLowerCase() === dayNames[dayOfWeekIndex]);
+    const dayOfWeek = format(selectedDate, 'eeee').toLowerCase() as DaySchedule['dayOfWeek'];
+    const daySchedule = schedule.find(d => d.dayOfWeek === dayOfWeek);
 
-      const slots: string[] = [];
-      if (currentDaySchedule && currentDaySchedule.isOpen && currentDaySchedule.timeSlots) {
-        const minAdvanceDateTime = addHours(new Date(), settings.minAdvanceReservationHours || 0);
+    if (!daySchedule || !daySchedule.isOpen || daySchedule.timeSlots.length === 0) return [];
 
-        currentDaySchedule.timeSlots.forEach(slot => {
-          let currentTime = parse(slot.startTime, "HH:mm", watchedDate);
-          const endTime = parse(slot.endTime, "HH:mm", watchedDate);
-          
-          while (isBefore(currentTime, endTime)) {
-            const slotDateTime = set(watchedDate, { hours: currentTime.getHours(), minutes: currentTime.getMinutes(), seconds: 0, milliseconds: 0 });
-            if (isBefore(minAdvanceDateTime, slotDateTime)) {
-               slots.push(format(currentTime, "HH:mm"));
+    const slots: { value: string; label: string }[] = [];
+    const now = new Date();
+    const minAdvanceDate = add(now, { hours: settings.minAdvanceReservationHours });
+
+    daySchedule.timeSlots.forEach((slot: ScheduleTimeSlot) => {
+      const [startHour, startMinute] = slot.startTime.split(':').map(Number);
+      const [endHour, endMinute] = slot.endTime.split(':').map(Number);
+
+      let slotStartTime = set(selectedDate, { hours: startHour, minutes: startMinute, seconds: 0, milliseconds: 0 });
+      const slotEndTime = set(selectedDate, { hours: endHour, minutes: endMinute, seconds: 0, milliseconds: 0 });
+      
+      // Adjust for minimum advance booking
+      if (isBefore(slotStartTime, minAdvanceDate) && isSameDay(selectedDate, now)) {
+         slotStartTime = minAdvanceDate;
+         // Round up to the next interval
+         const remainder = slotStartTime.getMinutes() % settings.timeSlotIntervalMinutes;
+         if (remainder !== 0) {
+            slotStartTime = add(slotStartTime, { minutes: settings.timeSlotIntervalMinutes - remainder});
+         }
+         // Ensure we don't exceed the original slot's start time
+         const originalSlotStart = set(selectedDate, { hours: startHour, minutes: startMinute });
+         if (isBefore(slotStartTime, originalSlotStart)) {
+            slotStartTime = originalSlotStart;
+         }
+      }
+      
+      // Iterate through intervals if slotStartTime is valid and before slotEndTime
+      if (isBefore(slotStartTime, slotEndTime)) {
+          const intervals = eachMinuteOfInterval(
+            { start: slotStartTime, end: slotEndTime },
+            { step: settings.timeSlotIntervalMinutes }
+          );
+
+          intervals.forEach(intervalTime => {
+            // Ensure the interval is not past the slot's end time (edge case if interval perfectly matches end)
+            if (isBefore(intervalTime, slotEndTime) || intervalTime.getTime() === slotEndTime.getTime()) {
+                 // Check if the interval is within the minAdvanceDate for today
+                 if (isSameDay(selectedDate, now) && isBefore(intervalTime, minAdvanceDate)) {
+                     return; // Skip this slot as it's too soon
+                 }
+                slots.push({
+                    value: format(intervalTime, "HH:mm"),
+                    label: format(intervalTime, "h:mm a"),
+                });
             }
-            currentTime = addHours(currentTime, settings.timeSlotIntervalMinutes / 60);
-          }
-        });
+          });
       }
-      setAvailableTimeSlots(slots);
-      if (slots.length > 0 && !slots.includes(form.getValues("time"))) {
-         setValue("time", ""); // Reset time if current selection is no longer valid or if slots appeared
-      } else if (slots.length === 0) {
-         setValue("time", ""); // No slots available, clear time
-      }
-    } else {
-      setAvailableTimeSlots([]);
-      setValue("time", "");
+    });
+    // Remove last slot if interval is greater than 0, as it would be the end time itself
+    // which is typically not bookable. Only remove if it's not the only slot.
+    if (settings.timeSlotIntervalMinutes > 0 && slots.length > 1 && slots[slots.length-1].value === format(slotEndTime, "HH:mm")) {
+      // slots.pop();
     }
-  }, [watchedDate, schedule, settings, setValue, form]);
+    return slots.filter((slot, index, self) => index === self.findIndex(s => s.value === slot.value)); // Unique slots
+  }, [selectedDate, schedule, settings]);
+  
 
-
-  async function onSubmit(values: PublicBookingFormValues) {
-    setIsSubmitting(true);
-    setGeneralError(null);
-
-    if (!settings) {
-      setGeneralError("Restaurant settings are not loaded. Cannot proceed.");
-      setIsSubmitting(false);
+  async function onSubmit(values: PublicBookingFormValues & { time?: string }) {
+    if (!settings || !schedule) {
+      toast({ title: "Error", description: "Restaurant configuration not loaded.", variant: "destructive" });
       return;
     }
-
-    const bookingDateTime = parse(`${format(values.date, 'yyyy-MM-dd')} ${values.time}`, 'yyyy-MM-dd HH:mm', new Date());
-    const minAdvanceDateTime = addHours(new Date(), settings.minAdvanceReservationHours);
-
-    if (isBefore(bookingDateTime, minAdvanceDateTime)) {
-      form.setError("time", { 
-        type: "manual", 
-        message: `Booking must be at least ${settings.minAdvanceReservationHours} hours in advance. Earliest time: ${format(minAdvanceDateTime, "HH:mm")}` 
-      });
-      setIsSubmitting(false);
-      return;
+    if (!values.time) {
+        toast({ title: "Missing Time", description: "Please select an available time slot.", variant: "destructive" });
+        form.setError("time", { type: "manual", message: "Please select a time." });
+        return;
     }
 
-    const bookingDataForFirestore: BookingInput = {
+    const bookingData: BookingInput = {
       guestName: values.guestName,
       guestEmail: values.guestEmail,
       guestPhone: values.guestPhone,
+      partySize: values.partySize,
       date: format(values.date, "yyyy-MM-dd"),
       time: values.time,
-      partySize: values.partySize,
-      status: "pending", // Default status for public bookings
+      status: 'pending', // Default status for public bookings
       notes: values.notes,
     };
 
     try {
-      await addBookingToFirestore(bookingDataForFirestore);
+      await addBookingToFirestore(bookingData);
       toast({
         title: "Booking Request Sent!",
-        description: "Your reservation request has been received. We will confirm shortly.",
+        description: "Your reservation request has been received. We'll confirm shortly.",
       });
-      form.reset();
-      setSelectedDate(undefined);
-      setAvailableTimeSlots([]);
+      router.push("/"); // Redirect to homepage or a confirmation page
     } catch (error) {
       console.error("Failed to create booking:", error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-      setGeneralError(`Failed to send booking request: ${errorMessage}. Please try again.`);
       toast({
         title: "Booking Failed",
-        description: `Could not process your booking: ${errorMessage}`,
+        description: "Could not submit your booking request. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
     }
   }
-  
+
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center p-6 space-y-4 bg-card text-card-foreground rounded-lg shadow-xl">
+      <div className="flex flex-col items-center justify-center min-h-[300px] space-y-2">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="font-body text-lg">Loading booking information...</p>
-        <p className="font-body text-sm text-muted-foreground">Please wait a moment.</p>
+        <p className="font-body text-muted-foreground">Loading booking information...</p>
       </div>
     );
   }
 
-  if (generalError) {
-     return (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle className="font-headline">Error</AlertTitle>
-          <AlertDescription className="font-body">{generalError}</AlertDescription>
-        </Alert>
-     );
+  if (error) {
+    return (
+      <Alert variant="destructive" className="max-w-md mx-auto">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="font-headline">Error</AlertTitle>
+        <AlertDescription className="font-body">{error}</AlertDescription>
+      </Alert>
+    );
   }
+
+  if (!settings || !schedule) {
+     return (
+      <Alert variant="destructive" className="max-w-md mx-auto">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="font-headline">Configuration Error</AlertTitle>
+        <AlertDescription className="font-body">
+          The restaurant's booking system is not fully configured. Please check back later.
+          (Admin: Ensure 'mainRestaurant' document in 'restaurantConfig' is set up with schedule and settings).
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  const bookingLeadTimeDays = settings?.bookingLeadTimeDays || 90;
+  const maxBookingDate = addDays(startOfDay(new Date()), bookingLeadTimeDays);
 
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-          <FormField
-            control={form.control}
-            name="guestName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-body flex items-center"><User className="mr-2 h-4 w-4 text-muted-foreground" />Full Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g. John Doe" {...field} className="font-body" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="partySize"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-body flex items-center"><Users className="mr-2 h-4 w-4 text-muted-foreground" />Number of Guests</FormLabel>
-                <FormControl>
-                  <Input type="number" min="1" max={settings?.maxGuestsPerBooking || 20} {...field} className="font-body" />
-                </FormControl>
-                 <FormDescription className="text-xs">Max {settings?.maxGuestsPerBooking || 20} guests online.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="date"
-            render={({ field }) => (
-              <FormItem className="flex flex-col">
-                <FormLabel className="font-body mb-1 flex items-center"><CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />Date</FormLabel>
-                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant={"outline"}
-                        className={cn(
-                          "w-full pl-3 text-left font-normal font-body",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={(date) => {
-                        field.onChange(date);
-                        setSelectedDate(date);
-                        setIsDatePickerOpen(false); // Auto-close picker
-                      }}
-                      disabled={(date) => isBefore(date, startOfDay(new Date())) || (settings?.bookingLeadTimeDays ? isBefore(startOfDay(new Date(Date.now() + (settings.bookingLeadTimeDays + 1) * 24 * 60 * 60 * 1000)), date) : false) }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="time"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="font-body flex items-center"><Clock className="mr-2 h-4 w-4 text-muted-foreground" />Time</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value} disabled={!watchedDate || availableTimeSlots.length === 0}>
-                  <FormControl>
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder={!watchedDate ? "Pick a date first" : (availableTimeSlots.length === 0 ? "No slots available" : "Select a time")} />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {availableTimeSlots.map(slot => (
-                      <SelectItem key={slot} value={slot} className="font-body">
-                        {slot}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!watchedDate && <FormDescription className="text-xs">Please select a date to see available times.</FormDescription>}
-                {watchedDate && availableTimeSlots.length === 0 && <FormDescription className="text-xs">No times available for this date. Try another date.</FormDescription>}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-lg mx-auto">
+        <FormField
+          control={form.control}
+          name="guestName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="font-body flex items-center"><User className="mr-2 h-4 w-4 text-muted-foreground" />Your Name</FormLabel>
+              <FormControl>
+                <Input placeholder="e.g. Jane Smith" {...field} className="font-body" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <FormField
             control={form.control}
             name="guestEmail"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-body flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Email Address (Optional)</FormLabel>
+                <FormLabel className="font-body flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Email (Optional)</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="e.g. john.doe@example.com" {...field} className="font-body" />
+                  <Input type="email" placeholder="e.g. jane@example.com" {...field} className="font-body" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -347,7 +290,7 @@ export default function PublicBookingForm() {
             name="guestPhone"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-body flex items-center"><Phone className="mr-2 h-4 w-4 text-muted-foreground" />Phone Number (Optional)</FormLabel>
+                <FormLabel className="font-body flex items-center"><Phone className="mr-2 h-4 w-4 text-muted-foreground" />Phone (Optional)</FormLabel>
                 <FormControl>
                   <Input type="tel" placeholder="e.g. (555) 123-4567" {...field} className="font-body" />
                 </FormControl>
@@ -356,45 +299,117 @@ export default function PublicBookingForm() {
             )}
           />
         </div>
-
         <FormField
+          control={form.control}
+          name="partySize"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="font-body flex items-center"><Users className="mr-2 h-4 w-4 text-muted-foreground" />Number of Guests</FormLabel>
+              <FormControl>
+                <Input type="number" min="1" max={settings?.maxGuestsPerBooking || 20} {...field} className="font-body" />
+              </FormControl>
+               <FormDescription className="text-xs">Max {settings?.maxGuestsPerBooking || 20} guests online.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="date"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel className="font-body mb-1 flex items-center"><CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />Date</FormLabel>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <FormControl>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full pl-3 text-left font-normal font-body",
+                        !field.value && "text-muted-foreground"
+                      )}
+                    >
+                      {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={field.value}
+                    onSelect={handleDateSelect}
+                    disabled={(date) => isBefore(date, startOfDay(new Date())) || isBefore(maxBookingDate, date) }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <FormDescription className="text-xs">
+                Bookings available up to {format(maxBookingDate, "MMM d, yyyy")}.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {selectedDate && (
+          <FormField
             control={form.control}
-            name="notes"
+            name="time"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-body flex items-center"><StickyNote className="mr-2 h-4 w-4 text-muted-foreground" />Special Requests (Optional)</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="e.g. Celebrating an anniversary, dietary restrictions, preferred seating area."
-                    className="resize-none font-body"
-                    {...field}
-                  />
-                </FormControl>
+                <FormLabel className="font-body flex items-center"><Clock className="mr-2 h-4 w-4 text-muted-foreground" />Available Times</FormLabel>
+                {availableTimeSlots.length > 0 ? (
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="font-body">
+                        <SelectValue placeholder="Select a time slot" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {availableTimeSlots.map(slot => (
+                        <SelectItem key={slot.value} value={slot.value} className="font-body">
+                          {slot.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm text-muted-foreground font-body pt-2">
+                    No available time slots for the selected date. Please try another date or contact us.
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
           />
-        
-        {settings && (
-            <Alert variant="default" className="bg-primary/5 border-primary/20">
-                <Info className="h-4 w-4 text-primary" />
-                <AlertTitle className="font-headline text-primary/90">Booking Information</AlertTitle>
-                <AlertDescription className="font-body text-sm text-primary/80 space-y-1">
-                   <p>Reservations can be made up to {settings.bookingLeadTimeDays} days in advance.</p>
-                   <p>A minimum of {settings.minAdvanceReservationHours} hours notice is required for online bookings.</p>
-                   <p>Standard reservation duration is {settings.maxReservationDurationHours} hours.</p>
-                </AlertDescription>
-            </Alert>
         )}
 
-        <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || isLoading}>
-          {isSubmitting ? (
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="font-body flex items-center"><StickyNote className="mr-2 h-4 w-4 text-muted-foreground" />Special Requests (Optional)</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="e.g. Celebrating an anniversary, dietary restrictions, etc."
+                  className="resize-none font-body"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit" className="w-full font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isLoading || !settings}>
+          {form.formState.isSubmitting ? (
             <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Sending Request...
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Submitting Request...
             </>
           ) : (
             <>
-              <Send className="mr-2 h-5 w-5" /> Request Booking
+              <Send className="mr-2 h-5 w-5" /> Request Reservation
             </>
           )}
         </Button>
@@ -403,4 +418,3 @@ export default function PublicBookingForm() {
   );
 }
 
-    
