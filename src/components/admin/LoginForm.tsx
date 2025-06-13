@@ -49,11 +49,11 @@ export default function LoginForm() {
       });
       router.push("/admin/dashboard");
     } catch (error: any) {
-      console.error("Firebase login error full object:", error); 
+      console.error("Firebase login error full object:", error);
       let errorMessage = "Login failed. Please check your credentials and try again."; // Default message
       let errorCategory = "generic";
 
-      if (error && error.code) { 
+      if (error && error.code) {
         console.log(`Firebase login attempt failed with error code: ${error.code}`);
         if (error.code === 'auth/visibility-check-was-unavailable') {
           errorMessage = "Login check failed. This might be due to browser settings (e.g., blocked cookies if in an iframe) or network issues. Please ensure cookies are enabled for Firebase, try a different browser/incognito mode, and then retry logging in.";
@@ -74,15 +74,15 @@ export default function LoginForm() {
       } else {
         console.log("Firebase login attempt failed with an error that has no 'code' property or error object is null/undefined.");
       }
-      
+
       console.log(`Login error category determined as: ${errorCategory}, resulting message: "${errorMessage}"`);
-      
+
       toast({
         title: "Login Failed",
         description: errorMessage,
         variant: "destructive",
       });
-      form.setError("email", { type: "manual", message: " " }); 
+      form.setError("email", { type: "manual", message: " " });
       form.setError("password", { type: "manual", message: " " });
       form.setValue("password","");
     }
