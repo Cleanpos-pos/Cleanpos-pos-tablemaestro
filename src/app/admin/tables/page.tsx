@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { auth } from "@/config/firebase";
 
 const tableStatuses: TableStatus[] = ['available', 'occupied', 'reserved', 'cleaning', 'unavailable'];
 
@@ -47,6 +48,11 @@ export default function TableManagementPage() {
 
   const fetchTables = useCallback(async () => {
     setIsLoading(true);
+     if (!auth.currentUser) {
+      console.warn("[TablesPage] Attempted to fetch tables without an authenticated user. Waiting for auth state.");
+      setIsLoading(false);
+      return;
+    }
     try {
       const fetchedTables = await getTables();
       setTables(fetchedTables);
@@ -63,13 +69,29 @@ export default function TableManagementPage() {
   }, [toast]);
 
   useEffect(() => {
-    fetchTables();
-  }, [fetchTables]);
+    setIsLoading(true);
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        console.log("[TablesPage] User authenticated, fetching tables.");
+        fetchTables();
+      } else {
+        console.log("[TablesPage] No user authenticated / user logged out.");
+        setIsLoading(false);
+        setTables([]);
+        toast({
+            title: "Authentication Required",
+            description: "Please log in to manage tables.",
+            variant: "destructive",
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchTables, toast]);
 
   const handleFormSubmit = () => {
     setIsFormOpen(false);
     setEditingTable(undefined);
-    fetchTables(); // Refresh the list
+    if (auth.currentUser) fetchTables(); // Refresh the list only if user is authenticated
   };
 
   const handleEdit = (table: Table) => {
@@ -84,10 +106,15 @@ export default function TableManagementPage() {
 
   const handleDeleteTable = async () => {
     if (tableToDelete) {
+      if (!auth.currentUser) {
+        toast({ title: "Not Logged In", description: "You must be logged in to delete tables.", variant: "destructive"});
+        setIsDeleteDialogOpen(false);
+        return;
+      }
       try {
         await deleteTable(tableToDelete.id);
         toast({ title: "Table Deleted", description: `Table "${tableToDelete.name}" has been deleted.` });
-        fetchTables(); // Refresh list
+        fetchTables(); 
       } catch (error) {
         console.error("Failed to delete table:", error);
         toast({
@@ -103,13 +130,17 @@ export default function TableManagementPage() {
   };
   
   const handleQuickStatusChange = async (tableId: string, newStatus: TableStatus) => {
+    if (!auth.currentUser) {
+        toast({ title: "Not Logged In", description: "You must be logged in to change table status.", variant: "destructive"});
+        return;
+    }
     try {
       await updateTableService(tableId, { status: newStatus });
       toast({
         title: "Status Updated",
         description: `Table status changed to ${newStatus}.`,
       });
-      fetchTables(); // Refresh tables to show updated status
+      fetchTables(); 
     } catch (error) {
       console.error("Failed to update table status:", error);
       toast({
@@ -161,7 +192,7 @@ export default function TableManagementPage() {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 font-body">Loading tables...</p>
             </div>
-          ) : tables.length === 0 ? (
+          ) : tables.length === 0 && auth.currentUser ? ( // Show "No Tables" only if logged in and no tables
             <div className="text-center py-10">
               <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-4 text-lg font-medium font-body">No Tables Found</h3>
@@ -184,6 +215,14 @@ export default function TableManagementPage() {
                   <AdminTableForm onFormSubmit={handleFormSubmit} onCancel={() => { setIsFormOpen(false); setEditingTable(undefined); }}/>
                 </DialogContent>
               </Dialog>
+            </div>
+          ) : !auth.currentUser && !isLoading ? ( // Show login prompt if not logged in and not loading
+             <div className="text-center py-10">
+                <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
+                <h3 className="mt-4 text-lg font-medium font-body">Authentication Required</h3>
+                <p className="mt-1 text-sm text-muted-foreground font-body">
+                    Please log in to manage tables.
+                </p>
             </div>
           ) : (
             <ShadcnTable>

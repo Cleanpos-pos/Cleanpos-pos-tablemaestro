@@ -8,10 +8,11 @@ import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { getBookings } from "@/services/bookingService";
 import { getTables, updateTable as updateTableService, getAvailableTablesCount, getOccupancyRate } from "@/services/tableService";
-import type { Booking, Table, TableStatus, ActivityItem as DashboardActivityItem } from "@/lib/types"; // Renamed ActivityItem to avoid conflict
-import { format, parseISO, formatDistanceToNow, isToday } from "date-fns";
+import type { Booking, Table, TableStatus, ActivityItem as DashboardActivityItem } from "@/lib/types";
+import { format, parseISO, formatDistanceToNow, isToday, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import TableOverviewItem from "@/components/admin/TableOverviewItem";
+import { auth } from "@/config/firebase";
 
 interface DashboardStats {
   upcomingBookings: number;
@@ -21,7 +22,7 @@ interface DashboardStats {
   totalTables: number;
 }
 
-interface ActivityItem extends DashboardActivityItem { // Extends the base type if needed, or use directly
+interface ActivityItem extends DashboardActivityItem {
   // No changes needed if DashboardActivityItem already fits
 }
 
@@ -41,6 +42,12 @@ export default function AdminDashboardPage() {
 
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
+    if (!auth.currentUser) {
+      console.warn("[Dashboard] Attempted to fetch data without an authenticated user. Waiting for auth state.");
+      // Toast will be handled by onAuthStateChanged if still no user
+      setIsLoading(false);
+      return;
+    }
     try {
       const [allBookings, allTables, availableTablesCount, occupancy] = await Promise.all([
         getBookings(),
@@ -53,9 +60,11 @@ export default function AdminDashboardPage() {
 
       const todaysBookings = allBookings.filter(b => {
         try {
-            return isToday(parseISO(b.date));
+            // Ensure date is valid before parsing
+            const parsedDate = parseISO(b.date);
+            return isValid(parsedDate) && isToday(parsedDate);
         } catch (e) {
-            // if date is invalid, it's not today
+            console.warn(`Invalid date format for booking ${b.id}: ${b.date}`);
             return false;
         }
       });
@@ -69,19 +78,23 @@ export default function AdminDashboardPage() {
         .reduce((sum, b) => sum + b.partySize, 0);
 
       const recentActivityItems = allBookings
-        .sort((a, b) => parseISO(b.createdAt).getTime() - parseISO(a.createdAt).getTime())
+        .sort((a, b) => {
+            const timeA = a.createdAt ? parseISO(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? parseISO(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+        })
         .slice(0, 5)
         .map((booking): ActivityItem => {
-          let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')} at ${booking.time}. Status: ${booking.status}.`;
+          let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${booking.date ? format(parseISO(booking.date + 'T00:00:00'), 'MMM d') : 'N/A'} at ${booking.time}. Status: ${booking.status}.`;
             if (booking.status === 'cancelled') {
               message = `Booking for ${booking.guestName} was cancelled.`;
             } else if (booking.status === 'confirmed') {
-              message = `Booking for ${booking.guestName} confirmed for ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')}.`;
+              message = `Booking for ${booking.guestName} confirmed for ${booking.date ? format(parseISO(booking.date + 'T00:00:00'), 'MMM d') : 'N/A'}.`;
             }
           return {
             id: booking.id,
             message: message,
-            time: `${formatDistanceToNow(parseISO(booking.createdAt))} ago`,
+            time: booking.createdAt ? `${formatDistanceToNow(parseISO(booking.createdAt))} ago` : 'Unknown time',
             type: booking.status === 'cancelled' ? 'cancellation' : (booking.status === 'confirmed' ? 'booking' : 'update'),
           };
         });
@@ -111,17 +124,39 @@ export default function AdminDashboardPage() {
   }, [toast]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    setIsLoading(true);
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        console.log("[Dashboard] User authenticated, fetching dashboard data.");
+        fetchDashboardData();
+      } else {
+        console.log("[Dashboard] No user authenticated / user logged out.");
+        setIsLoading(false);
+        setStats({ upcomingBookings: 0, availableTables: 0, occupancyRate: 0, guestsToday: 0, totalTables: 0 });
+        setActivity([]);
+        setTables([]);
+        toast({
+            title: "Authentication Required",
+            description: "Please log in to view the dashboard.",
+            variant: "destructive",
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchDashboardData, toast]);
 
   const handleTableStatusChange = async (tableId: string, newStatus: TableStatus) => {
+    if (!auth.currentUser) {
+        toast({ title: "Not Logged In", description: "You must be logged in to change table status.", variant: "destructive"});
+        return;
+    }
     try {
       await updateTableService(tableId, { status: newStatus });
       toast({
         title: "Table Status Updated",
         description: `Table status changed to ${newStatus}. Dashboard will refresh.`,
       });
-      fetchDashboardData(); // Re-fetch all data to update stats and table overview
+      fetchDashboardData(); 
     } catch (error) {
       console.error("Failed to update table status from dashboard:", error);
       toast({
@@ -229,6 +264,9 @@ export default function AdminDashboardPage() {
                         <p className="mt-1 text-sm text-muted-foreground font-body">
                             Add tables in the <Link href="/admin/tables" className="text-primary hover:underline">Tables section</Link> to see an overview here.
                         </p>
+                         <Button asChild className="mt-4">
+                            <Link href="/admin/tables">Configure Tables</Link>
+                        </Button>
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
