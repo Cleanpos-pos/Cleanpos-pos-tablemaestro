@@ -27,7 +27,7 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
     name: data.name,
     capacity: data.capacity,
     status: data.status,
-    location: data.location,
+    location: data.location, // Firestore returns null or the value, not undefined for missing fields
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
@@ -57,12 +57,20 @@ export const getTables = async (): Promise<Table[]> => {
 export const addTable = async (tableData: TableInput): Promise<string> => {
   try {
     const tablesCollectionRef = getTablesCollectionRef();
-    const user = auth.currentUser; // Re-check, though getTablesCollectionRef does it.
+    const user = auth.currentUser; 
     if (!user) throw new Error("User not authenticated.");
 
+    const dataToSave: { [key: string]: any } = { ...tableData };
+    // Remove undefined fields, Firestore doesn't support them.
+    Object.keys(dataToSave).forEach(key => {
+      if (dataToSave[key] === undefined) {
+        delete dataToSave[key];
+      }
+    });
+
     const docRef = await addDoc(tablesCollectionRef, {
-      ...tableData,
-      ownerUID: user.uid, // For potential cross-user queries if admin structure changes
+      ...dataToSave,
+      ownerUID: user.uid, 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -78,8 +86,17 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
     const user = auth.currentUser;
     if (!user) throw new Error("User not authenticated.");
     const tableRef = doc(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`, tableId);
+    
+    const dataToUpdate: { [key: string]: any } = { ...tableData };
+    // Remove undefined fields for update as well
+    Object.keys(dataToUpdate).forEach(key => {
+      if (dataToUpdate[key] === undefined) {
+        delete dataToUpdate[key];
+      }
+    });
+
     await updateDoc(tableRef, {
-      ...tableData,
+      ...dataToUpdate, 
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -92,9 +109,9 @@ export const deleteTable = async (tableId: string): Promise<void> => {
   try {
     const user = auth.currentUser;
     if (!user) throw new Error("User not authenticated.");
-    // Before deleting, we might want to ensure this table is not assigned to active bookings.
-    // For now, direct delete.
-    const bookingsRef = collection(db, 'bookings'); // Assuming bookings are top-level or per-user
+    
+    const bookingsCollectionPath = `restaurantConfig/${user.uid}/bookings`; // Assuming bookings are per-user
+    const bookingsRef = collection(db, bookingsCollectionPath);
     const q = query(bookingsRef, where("tableId", "==", tableId), where("status", "in", ["pending", "confirmed", "seated"]));
     const activeBookingsSnap = await getDocs(q);
 
@@ -117,7 +134,7 @@ export const getAvailableTablesCount = async (): Promise<number> => {
     return tables.filter(table => table.status === 'available').length;
   } catch (error) {
     console.error("Error getting available tables count: ", error);
-    return 0; // Fallback
+    return 0; 
   }
 };
 
@@ -129,11 +146,10 @@ export const getOccupancyRate = async (): Promise<number> => {
     return Math.round((occupiedTables / tables.length) * 100);
   } catch (error) {
     console.error("Error calculating occupancy rate: ", error);
-    return 0; // Fallback
+    return 0; 
   }
 };
 
-// Batch update table statuses - useful for initializing or bulk changes
 export const batchUpdateTableStatuses = async (tableIds: string[], status: TableStatus): Promise<void> => {
   const user = auth.currentUser;
   if (!user) throw new Error("User not authenticated.");
