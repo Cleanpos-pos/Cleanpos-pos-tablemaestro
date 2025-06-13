@@ -24,11 +24,13 @@ import {
   Settings,
   LogOut,
   UserCircle,
+  LineChart, // Added LineChart icon
 } from "lucide-react";
 
 const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/bookings", label: "Bookings", icon: BookOpenText },
+  { href: "/admin/data", label: "Data", icon: LineChart }, // New Data item
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
@@ -89,3 +91,4 @@ export default function AdminSidebar() {
     </Sidebar>
   );
 }
+
