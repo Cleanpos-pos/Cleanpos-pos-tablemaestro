@@ -41,6 +41,7 @@ export default function LoginForm() {
 
   async function onSubmit(values: z.infer<typeof loginFormSchema>) {
     form.clearErrors(); // Clear previous errors
+    console.log("[LoginForm] Attempting login for email:", values.email);
     try {
       await signInWithEmailAndPassword(auth, values.email, values.password);
       toast({
@@ -49,12 +50,12 @@ export default function LoginForm() {
       });
       router.push("/admin/dashboard");
     } catch (error: any) {
-      console.error("Firebase login error full object:", error);
+      console.error("[LoginForm] Firebase login error raw object:", error);
       let errorMessage = "Login failed. Please check your credentials and try again."; // Default message
       let errorCategory = "generic";
 
       if (error && error.code) {
-        console.log(`Firebase login attempt failed with error code: ${error.code}`);
+        console.log(`[LoginForm] Firebase login attempt failed with error code: ${error.code}`);
         if (error.code === 'auth/visibility-check-was-unavailable') {
           errorMessage = "Login check failed. This might be due to browser settings (e.g., blocked cookies if in an iframe) or network issues. Please ensure cookies are enabled for Firebase, try a different browser/incognito mode, and then retry logging in.";
           errorCategory = "visibility-check";
@@ -70,20 +71,28 @@ export default function LoginForm() {
         } else if (error.code === 'auth/user-disabled') {
           errorMessage = "This user account has been disabled. Please contact support.";
           errorCategory = "user-disabled";
+        } else if (error.code === 'auth/operation-not-allowed') {
+          errorMessage = "Email/password sign-in is not enabled for this Firebase project. Please enable it in the Firebase console (Authentication > Sign-in method).";
+          errorCategory = "operation-not-allowed";
+        } else if (error.code === 'auth/missing-continue-uri') {
+          errorMessage = "A continue URL must be provided in the request for certain operations.";
+          errorCategory = "missing-continue-uri";
         }
       } else {
-        console.log("Firebase login attempt failed with an error that has no 'code' property or error object is null/undefined.");
+        console.log("[LoginForm] Firebase login attempt failed with an error that has no 'code' property or error object is null/undefined.");
       }
 
-      console.log(`Login error category determined as: ${errorCategory}, resulting message: "${errorMessage}"`);
+      console.log(`[LoginForm] Login error category determined as: ${errorCategory}, resulting message: "${errorMessage}"`);
 
       toast({
         title: "Login Failed",
         description: errorMessage,
         variant: "destructive",
       });
-      form.setError("email", { type: "manual", message: " " });
-      form.setError("password", { type: "manual", message: " " });
+      if (errorCategory === "invalid-credentials" || errorCategory === "generic") {
+        form.setError("email", { type: "manual", message: " " }); // Clear specific message to avoid redundancy with toast
+        form.setError("password", { type: "manual", message: " " });// Clear specific message
+      }
       form.setValue("password","");
     }
   }
