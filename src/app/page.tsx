@@ -1,10 +1,18 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus } from "lucide-react";
+import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus, Camera } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
+  const galleryImages = [
+    { src: "https://placehold.co/600x400.png", alt: "Delicious dish 1", hint: "food plate" },
+    { src: "https://placehold.co/600x400.png", alt: "Restaurant interior", hint: "restaurant interior" },
+    { src: "https://placehold.co/600x400.png", alt: "Smiling chef", hint: "chef cooking" },
+    { src: "https://placehold.co/600x400.png", alt: "Tasty dessert", hint: "dessert cake" },
+  ];
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-8">
       <div className="space-y-8 w-full max-w-md">
@@ -62,6 +70,43 @@ export default function HomePage() {
              <p className="text-xs text-center text-muted-foreground font-body">
               Start managing your restaurant bookings efficiently today!
             </p>
+          </CardContent>
+        </Card>
+
+        {/* Food Gallery Section */}
+        <Card className="shadow-2xl rounded-xl overflow-hidden">
+          <CardHeader className="bg-muted text-center p-8">
+            <div className="flex justify-center mb-4">
+              <Camera className="w-16 h-16 text-muted-foreground" />
+            </div>
+            <h2 className="text-3xl font-headline text-foreground">View Our Food Gallery</h2>
+            <CardDescription className="text-muted-foreground/80 mt-2 font-body">
+              A glimpse of the culinary delights awaiting you.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-8">
+            <div className="grid grid-cols-2 gap-4">
+              {galleryImages.map((image, index) => (
+                <div key={index} className="rounded-lg overflow-hidden shadow-md aspect-square">
+                  <Image
+                    src={image.src}
+                    alt={image.alt}
+                    width={300}
+                    height={300}
+                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                    data-ai-hint={image.hint}
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Optionally, add a button to a full gallery page if you plan to create one */}
+            {/* 
+            <div className="mt-6 text-center">
+              <Button variant="outline" className="btn-subtle-animate">
+                Explore Full Gallery
+              </Button>
+            </div> 
+            */}
           </CardContent>
         </Card>
       </div>
