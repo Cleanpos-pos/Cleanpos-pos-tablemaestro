@@ -5,10 +5,28 @@ import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus, Camera } from "lucide-
 import Link from "next/link";
 import Image from "next/image";
 import { getPublicRestaurantSettings } from "@/services/settingsService";
+import type { CombinedSettings } from "@/lib/types";
 
 export default async function HomePage() {
-  const settings = await getPublicRestaurantSettings();
-  const galleryImageUrls = settings?.restaurantGalleryUrls?.filter(url => url !== null) as string[] || [];
+  let settings: CombinedSettings | null = null;
+  let galleryImageUrls: string[] = [];
+
+  try {
+    settings = await getPublicRestaurantSettings();
+    if (settings?.restaurantGalleryUrls) {
+      galleryImageUrls = settings.restaurantGalleryUrls.filter(url => url !== null) as string[];
+    }
+  } catch (error) {
+    console.error("--------------------------------------------------------------------");
+    console.error("ERROR FETCHING PUBLIC RESTAURANT SETTINGS FOR HOMEPAGE:");
+    console.error("This is likely a Firestore Security Rules issue.");
+    console.error("Please ensure your Firestore rules allow public read access to the document:");
+    console.error("`restaurantConfig/mainRestaurant` (or your configured PUBLIC_RESTAURANT_ID).");
+    console.error("Refer to the Firebase console -> Firestore Database -> Rules.");
+    console.error("Error details:", error);
+    console.error("--------------------------------------------------------------------");
+    // Gracefully degrade: gallery and restaurant name will be empty or default
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-8">
@@ -102,6 +120,11 @@ export default async function HomePage() {
                 The restaurant's photo gallery is not available at the moment. Please check back later or visit the restaurant to see our offerings!
               </p>
             )}
+             {settings === null && (
+                <p className="text-center text-destructive font-body py-4">
+                    Could not load restaurant gallery due to a configuration issue. Please check console for details.
+                </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -109,6 +132,7 @@ export default async function HomePage() {
       <footer className="mt-12 text-center text-muted-foreground text-sm font-body">
         <p>&copy; {new Date().getFullYear()} Table Maestro V2. All rights reserved.</p>
         {settings?.restaurantName && <p className="text-xs">Proudly serving: {settings.restaurantName}</p>}
+        {settings === null && <p className="text-xs text-destructive">Restaurant name could not be loaded.</p>}
       </footer>
     </div>
   );

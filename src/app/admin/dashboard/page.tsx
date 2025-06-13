@@ -3,105 +3,134 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarCheck, Users, BarChart3, PlusCircle, Edit, AlertTriangle, Info, Loader2 } from "lucide-react";
+import { CalendarCheck, Users, BarChart3, PlusCircle, Edit, AlertTriangle, Info, Loader2, Table as TableIconLucide, Percent } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getBookings } from "@/services/bookingService";
-import type { Booking } from "@/lib/types";
-import { format, parseISO, formatDistanceToNow } from "date-fns";
+import { getTables, updateTable as updateTableService, getAvailableTablesCount, getOccupancyRate } from "@/services/tableService";
+import type { Booking, Table, TableStatus, ActivityItem as DashboardActivityItem } from "@/lib/types"; // Renamed ActivityItem to avoid conflict
+import { format, parseISO, formatDistanceToNow, isToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import TableOverviewItem from "@/components/admin/TableOverviewItem";
 
 interface DashboardStats {
   upcomingBookings: number;
-  availableTables: string; // Remains string for "N/A" or placeholder
-  occupancyRate: string;   // Remains string for "N/A" or placeholder
+  availableTables: number;
+  occupancyRate: number;
   guestsToday: number;
+  totalTables: number;
 }
 
-interface ActivityItem {
-  id: string;
-  message: string;
-  time: string;
-  type: 'booking' | 'cancellation' | 'system' | 'update';
+interface ActivityItem extends DashboardActivityItem { // Extends the base type if needed, or use directly
+  // No changes needed if DashboardActivityItem already fits
 }
+
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     upcomingBookings: 0,
-    availableTables: "-",
-    occupancyRate: "-",
+    availableTables: 0,
+    occupancyRate: 0,
     guestsToday: 0,
+    totalTables: 0,
   });
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [tables, setTables] = useState<Table[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      setIsLoading(true);
-      try {
-        const allBookings = await getBookings();
-        const todayFormatted = format(new Date(), 'yyyy-MM-dd');
+  const fetchDashboardData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [allBookings, allTables, availableTablesCount, occupancy] = await Promise.all([
+        getBookings(),
+        getTables(),
+        getAvailableTablesCount(),
+        getOccupancyRate()
+      ]);
+      
+      setTables(allTables);
 
-        const todaysBookings = allBookings.filter(b => b.date === todayFormatted);
+      const todaysBookings = allBookings.filter(b => {
+        try {
+            return isToday(parseISO(b.date));
+        } catch (e) {
+            // if date is invalid, it's not today
+            return false;
+        }
+      });
 
-        const upcomingBookingsCount = todaysBookings.filter(
-          b => b.status === 'confirmed' || b.status === 'pending'
-        ).length;
+      const upcomingBookingsCount = todaysBookings.filter(
+        b => b.status === 'confirmed' || b.status === 'pending'
+      ).length;
 
-        const guestsTodayCount = todaysBookings
-          .filter(b => b.status === 'confirmed' || b.status === 'pending' || b.status === 'seated')
-          .reduce((sum, b) => sum + b.partySize, 0);
+      const guestsTodayCount = todaysBookings
+        .filter(b => b.status === 'confirmed' || b.status === 'pending' || b.status === 'seated')
+        .reduce((sum, b) => sum + b.partySize, 0);
 
-        const recentActivityItems = allBookings
-          .slice(0, 5) // Get the 5 most recent bookings (assuming getBookings sorts by createdAt desc)
-          .map((booking): ActivityItem => {
-            let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')} at ${booking.time}. Status: ${booking.status}.`;
+      const recentActivityItems = allBookings
+        .sort((a, b) => parseISO(b.createdAt).getTime() - parseISO(a.createdAt).getTime())
+        .slice(0, 5)
+        .map((booking): ActivityItem => {
+          let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')} at ${booking.time}. Status: ${booking.status}.`;
             if (booking.status === 'cancelled') {
               message = `Booking for ${booking.guestName} was cancelled.`;
             } else if (booking.status === 'confirmed') {
               message = `Booking for ${booking.guestName} confirmed for ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')}.`;
             }
-            return {
-              id: booking.id,
-              message: message,
-              time: `${formatDistanceToNow(parseISO(booking.createdAt))} ago`,
-              type: booking.status === 'cancelled' ? 'cancellation' : 'booking',
-            };
-          });
-        
-        setStats({
-          upcomingBookings: upcomingBookingsCount,
-          availableTables: "N/A", // Placeholder: Real data needed
-          occupancyRate: "N/A",   // Placeholder: Real data needed
-          guestsToday: guestsTodayCount,
+          return {
+            id: booking.id,
+            message: message,
+            time: `${formatDistanceToNow(parseISO(booking.createdAt))} ago`,
+            type: booking.status === 'cancelled' ? 'cancellation' : (booking.status === 'confirmed' ? 'booking' : 'update'),
+          };
         });
-        setActivity(recentActivityItems);
+      
+      setStats({
+        upcomingBookings: upcomingBookingsCount,
+        availableTables: availableTablesCount,
+        occupancyRate: occupancy,
+        guestsToday: guestsTodayCount,
+        totalTables: allTables.length,
+      });
+      setActivity(recentActivityItems);
 
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
-        toast({
-          title: "Error Loading Dashboard",
-          description: "Could not retrieve dashboard data. Please try again.",
-          variant: "destructive",
-        });
-        // Set to default/error state
-        setStats({
-          upcomingBookings: 0,
-          availableTables: "Error",
-          occupancyRate: "Error",
-          guestsToday: 0,
-        });
-        setActivity([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDashboardData();
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+      toast({
+        title: "Error Loading Dashboard",
+        description: `Could not retrieve dashboard data: ${error instanceof Error ? error.message : String(error)}. Please ensure you are logged in.`,
+        variant: "destructive",
+      });
+      setStats({ upcomingBookings: 0, availableTables: 0, occupancyRate: 0, guestsToday: 0, totalTables: 0 });
+      setActivity([]);
+      setTables([]);
+    } finally {
+      setIsLoading(false);
+    }
   }, [toast]);
 
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const handleTableStatusChange = async (tableId: string, newStatus: TableStatus) => {
+    try {
+      await updateTableService(tableId, { status: newStatus });
+      toast({
+        title: "Table Status Updated",
+        description: `Table status changed to ${newStatus}. Dashboard will refresh.`,
+      });
+      fetchDashboardData(); // Re-fetch all data to update stats and table overview
+    } catch (error) {
+      console.error("Failed to update table status from dashboard:", error);
+      toast({
+        title: "Error Updating Status",
+        description: `Could not update table status: ${error instanceof Error ? error.message : String(error)}`,
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -140,30 +169,29 @@ export default function AdminDashboardPage() {
         <Card className="shadow-lg rounded-xl">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium font-body">Available Tables</CardTitle>
-            {/* Using a generic Users icon as table icon might not be available or suitable */}
-            <Users className="h-5 w-5 text-green-500" /> 
+            <TableIconLucide className="h-5 w-5 text-green-500" /> 
           </CardHeader>
           <CardContent>
              {isLoading ? (
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             ) : (
-              <div className="text-3xl font-bold font-headline">{stats.availableTables}</div>
+              <div className="text-3xl font-bold font-headline">{stats.availableTables} / {stats.totalTables}</div>
             )}
-            <p className="text-xs text-muted-foreground font-body">Currently (Data N/A).</p>
+            <p className="text-xs text-muted-foreground font-body">Currently available.</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg rounded-xl">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium font-body">Occupancy Rate</CardTitle>
-            <BarChart3 className="h-5 w-5 text-accent" />
+            <Percent className="h-5 w-5 text-accent" />
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             ) : (
-              <div className="text-3xl font-bold font-headline">{stats.occupancyRate}{stats.occupancyRate !== "N/A" && stats.occupancyRate !== "-" && stats.occupancyRate !== "Error" ? "%" : ""}</div>
+              <div className="text-3xl font-bold font-headline">{stats.occupancyRate}%</div>
             )}
-            <p className="text-xs text-muted-foreground font-body">Current (Data N/A).</p>
+            <p className="text-xs text-muted-foreground font-body">Based on occupied/reserved.</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg rounded-xl">
@@ -182,8 +210,41 @@ export default function AdminDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="shadow-lg rounded-xl">
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="shadow-lg rounded-xl xl:col-span-2">
+            <CardHeader>
+                <CardTitle className="font-headline">Table Overview</CardTitle>
+                <CardDescription className="font-body">Current status of all restaurant tables.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? (
+                     <div className="flex items-center justify-center h-40">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="ml-2 font-body">Loading table overview...</p>
+                    </div>
+                ) : tables.length === 0 ? (
+                    <div className="text-center py-10">
+                        <TableIconLucide className="mx-auto h-12 w-12 text-muted-foreground" />
+                        <h3 className="mt-4 text-lg font-medium font-body">No Tables Configured</h3>
+                        <p className="mt-1 text-sm text-muted-foreground font-body">
+                            Add tables in the <Link href="/admin/tables" className="text-primary hover:underline">Tables section</Link> to see an overview here.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {tables.map(table => (
+                            <TableOverviewItem 
+                                key={table.id} 
+                                table={table} 
+                                onStatusChange={handleTableStatusChange}
+                            />
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+        
+        <Card className="shadow-lg rounded-xl xl:col-span-1">
           <CardHeader>
             <CardTitle className="font-headline">Recent Activity</CardTitle>
             <CardDescription className="font-body">Latest booking updates.</CardDescription>
@@ -214,24 +275,14 @@ export default function AdminDashboardPage() {
             )}
           </CardContent>
         </Card>
-        <Card className="shadow-lg rounded-xl">
-          <CardHeader>
-            <CardTitle className="font-headline">Table Overview</CardTitle>
-             <CardDescription className="font-body">Visual representation of table status (Placeholder).</CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-center h-48 bg-muted/30 rounded-md">
-             <Image src="https://placehold.co/400x200.png" alt="Table Layout Placeholder" width={400} height={200} data-ai-hint="restaurant layout" className="opacity-50" />
-          </CardContent>
-        </Card>
       </div>
        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-md shadow">
-        <h3 className="font-headline text-lg text-blue-700">Note for Developers:</h3>
+        <h3 className="font-headline text-lg text-blue-700">Note:</h3>
         <p className="font-body text-blue-600">
-          "Available Tables" and "Occupancy Rate" statistics, and the "Table Overview" visual are currently placeholders.
-          Full implementation requires a dedicated `tables` collection in Firestore and restaurant capacity settings.
+          The "Table Overview" allows quick status changes. For full table configuration (add, edit name/capacity, delete), please visit the dedicated <Link href="/admin/tables" className="font-semibold hover:underline">Tables Management page</Link>.
+          Automated table status updates based on booking events (e.g., guest seated) can be implemented as a future enhancement.
         </p>
       </div>
     </div>
   );
 }
-

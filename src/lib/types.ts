@@ -55,10 +55,17 @@ export interface RestaurantProfileSettings {
 // Combined type for the settings page form
 export type CombinedSettings = ReservationSettings & RestaurantProfileSettings;
 
+export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning' | 'unavailable';
+
 export interface Table {
   id: string;
   name: string; // e.g., "Table 1", "Patio Booth 2"
   capacity: number;
-  status: 'available' | 'occupied' | 'reserved' | 'unavailable';
-  location?: string; // e.g., "Main Dining", "Patio", "Bar"
+  status: TableStatus;
+  location?: string; // e.g., "Main Dining", "Patio", "Bar" - Optional for now
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
 }
+
+export type TableInput = Omit<Table, 'id' | 'createdAt' | 'updatedAt'>;
+export type TableUpdateData = Partial<TableInput>;
