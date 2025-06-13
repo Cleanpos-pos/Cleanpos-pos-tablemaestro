@@ -32,30 +32,33 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
         setIsLoadingBooking(true);
         setAssociatedBooking(null); // Reset before fetching
         try {
-          const activeBookings = await getActiveBookingsForTable(table.id);
+          console.log(`[TableOverviewItem: ${table.name}] Fetching bookings for table ID: ${table.id}, Current Table Status: ${table.status}`);
+          const activeBookings = await getActiveBookingsForTable(table.id); // Already sorted by service
+          console.log(`[TableOverviewItem: ${table.name}] Active bookings returned by service:`, activeBookings.length > 0 ? activeBookings : 'None');
           let relevantBooking: Booking | null = null;
 
           if (activeBookings.length > 0) {
             if (table.status === 'occupied') {
-              relevantBooking = activeBookings.find(b => b.status === 'seated') || activeBookings[0]; // Fallback to first if no 'seated'
+              // Prefer a 'seated' booking if table is occupied
+              relevantBooking = activeBookings.find(b => b.status === 'seated') || activeBookings[0];
+              console.log(`[TableOverviewItem: ${table.name}] Table is 'occupied'. Preferred 'seated' booking:`, activeBookings.find(b => b.status === 'seated'), `Fallback to first active:`, activeBookings[0], `Final relevantBooking:`, relevantBooking);
             } else if (table.status === 'reserved') {
-              // Find a confirmed or pending booking for today
-              relevantBooking = activeBookings.find(b => 
-                (b.status === 'confirmed' || b.status === 'pending') && b.date && isToday(parseISO(b.date))
-              ) || null;
-               // If no specific for today, but table is reserved, show the first upcoming if any
-              if (!relevantBooking && activeBookings.length > 0) {
-                 relevantBooking = activeBookings.sort((a,b) => {
-                    const dateA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
-                    const dateB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
-                    return dateA - dateB;
-                 })[0];
-              }
+              // Prefer a 'confirmed' or 'pending' booking for today if table is reserved
+              const todayBooking = activeBookings.find(b =>
+                (b.status === 'confirmed' || b.status === 'pending') &&
+                b.date &&
+                isToday(parseISO(b.date))
+              );
+              // If no specific booking for today, take the first upcoming one from the sorted list.
+              relevantBooking = todayBooking || activeBookings[0];
+              console.log(`[TableOverviewItem: ${table.name}] Table is 'reserved'. Preferred 'today' booking:`, todayBooking, `Fallback to first active:`, activeBookings[0], `Final relevantBooking:`, relevantBooking);
             }
+          } else {
+            console.log(`[TableOverviewItem: ${table.name}] No active bookings found for this table.`);
           }
           setAssociatedBooking(relevantBooking);
         } catch (error) {
-          console.error(`Failed to fetch booking for table ${table.id}:`, error);
+          console.error(`[TableOverviewItem: ${table.name}] Failed to fetch booking for table ${table.id}:`, error);
           toast({
             title: "Error Loading Booking Info",
             description: `Could not load booking details for table ${table.name}.`,
@@ -66,12 +69,14 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
           setIsLoadingBooking(false);
         }
       } else {
-        setAssociatedBooking(null); // Clear booking if table is not occupied/reserved
+        // Clear booking if table is not occupied/reserved, or if it becomes available etc.
+        if(associatedBooking !== null) setAssociatedBooking(null); 
+        console.log(`[TableOverviewItem: ${table.name}] Table status is '${table.status}', not 'occupied' or 'reserved'. Associated booking cleared if previously set.`);
       }
     };
 
     fetchBookingForTable();
-  }, [table.id, table.status, toast]);
+  }, [table.id, table.name, table.status, toast]); // Ensure all dependencies used in effect are listed
 
   return (
     <Card className="shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col h-full">
@@ -164,3 +169,4 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
 };
 
 export default TableOverviewItem;
+
