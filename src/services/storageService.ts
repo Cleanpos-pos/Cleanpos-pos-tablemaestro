@@ -10,14 +10,18 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
  */
 export const uploadImageAndGetURL = async (file: File, path: string): Promise<string> => {
   try {
+    console.log(`[storageService] Attempting to upload to path: ${path}`);
     const storageRef = ref(storage, path);
     const snapshot = await uploadBytes(storageRef, file);
+    console.log(`[storageService] Upload successful for path: ${path}. Snapshot:`, snapshot);
     const downloadURL = await getDownloadURL(snapshot.ref);
+    console.log(`[storageService] Download URL for ${path}: ${downloadURL}`);
     return downloadURL;
   } catch (error) {
-    console.error("Error uploading image: ", error);
-    // Consider more specific error handling or re-throwing
-    throw new Error(`Image upload failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`[storageService] Error uploading image to ${path}: `, error);
+    // Log the error object itself for more details in the console
+    console.error("[storageService] Full error object:", error);
+    throw new Error(`Image upload failed for ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -28,16 +32,17 @@ export const uploadImageAndGetURL = async (file: File, path: string): Promise<st
  */
 export const deleteImageFromStorage = async (path: string): Promise<void> => {
   try {
+    console.log(`[storageService] Attempting to delete image from path: ${path}`);
     const storageRef = ref(storage, path);
     await deleteObject(storageRef);
+    console.log(`[storageService] Image deleted successfully from path: ${path}`);
   } catch (error) {
-    console.error("Error deleting image from storage: ", error);
-    // If file doesn't exist, deleteObject might throw an error.
-    // You might want to handle 'storage/object-not-found' specifically if needed.
+    console.error(`[storageService] Error deleting image from storage path ${path}: `, error);
     if ((error as any).code === 'storage/object-not-found') {
-      console.warn(`File not found at path: ${path}, nothing to delete.`);
-      return; // Not a critical error in many cases
+      console.warn(`[storageService] File not found at path: ${path}, nothing to delete.`);
+      return; 
     }
-    throw new Error(`Image deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Image deletion failed for ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
+
