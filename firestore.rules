@@ -1,24 +1,39 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper function to check if a user is an admin.
+    // An admin is a user whose UID exists as a document ID in the 'admins' collection.
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Restaurant Configuration (Settings & Schedule):
+    // Documents in 'restaurantConfig' are named by the user's UID.
+    // Allow an authenticated user to read and write *only their own* configuration document.
+    match /restaurantConfig/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Bookings:
+    // All booking operations (create, read, update, delete) are restricted to admins.
     match /bookings/{bookingId} {
-      allow create: if true; // Anyone can create a booking
-      allow read, update, delete: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); // Admins can manage
+      allow read, create, update, delete: if isAdmin();
     }
 
-    match /restaurantConfig/{docId} {
-      allow read: if true; // Anyone can read restaurant settings and schedule
-      allow write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); // Admins can write
-    }
-
+    // Admins collection:
+    // - Stores UIDs of admin users.
+    // - Only existing admins can read or manage (add/remove) other admins.
+    // - IMPORTANT: The first admin(s) must be added manually via the Firebase Console.
+    //   The Document ID in the 'admins' collection should be the user's Firebase Auth UID.
     match /admins/{adminId} {
-      // Admins can read and write to the admins collection (to manage other admins)
-      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      allow read, write: if isAdmin();
     }
 
-    // Deny all other access by default
+    // Default deny all other paths for security.
+    // This ensures that any path not explicitly matched above is not accessible.
     match /{document=**} {
       allow read, write: if false;
     }
