@@ -1,5 +1,4 @@
 
-"use server";
 import { db, auth } from '@/config/firebase';
 import type { Table, TableInput, TableUpdateData, TableStatus } from '@/lib/types';
 import {
