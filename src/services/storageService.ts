@@ -12,7 +12,8 @@ export const uploadImageAndGetURL = async (file: File, path: string): Promise<st
   try {
     console.log(`[storageService] Attempting to upload to path: ${path}`);
     const storageRef = ref(storage, path);
-    const snapshot = await uploadBytes(storageRef, file);
+    // const metadata = { contentType: file.type }; // Redundant if using uploadBytes directly as it infers
+    const snapshot = await uploadBytes(storageRef, file); // Pass file directly
     console.log(`[storageService] Upload successful for path: ${path}. Snapshot:`, snapshot);
     const downloadURL = await getDownloadURL(snapshot.ref);
     console.log(`[storageService] Download URL for ${path}: ${downloadURL}`);
@@ -21,6 +22,21 @@ export const uploadImageAndGetURL = async (file: File, path: string): Promise<st
     console.error(`[storageService] Error uploading image to ${path}: `, error);
     // Log the error object itself for more details in the console
     console.error("[storageService] Full error object:", error);
+
+    // Attempt to provide more specific error information
+    if (error instanceof Error) {
+        const firebaseError = error as any; // Cast to any to check for Firebase specific properties
+        if (firebaseError.code) {
+             console.error(`[storageService] Firebase error code: ${firebaseError.code}`);
+             if (firebaseError.code === 'storage/unauthorized') {
+                console.error('[storageService] Unauthorized: Check Firebase Storage security rules and user authentication status.');
+             } else if (firebaseError.code === 'storage/object-not-found') {
+                console.error('[storageService] Object not found: The file path might be incorrect or the object does not exist.');
+             } else if (firebaseError.code === 'storage/retry-limit-exceeded') {
+                console.error('[storageService] Retry limit exceeded: Network issue or Firebase server issue. Try again later.');
+             }
+        }
+    }
     throw new Error(`Image upload failed for ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
@@ -40,9 +56,10 @@ export const deleteImageFromStorage = async (path: string): Promise<void> => {
     console.error(`[storageService] Error deleting image from storage path ${path}: `, error);
     if ((error as any).code === 'storage/object-not-found') {
       console.warn(`[storageService] File not found at path: ${path}, nothing to delete.`);
-      return; 
+      return;
     }
     throw new Error(`Image deletion failed for ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
+    

@@ -23,7 +23,7 @@ import Image from "next/image";
 import React, { useState, useEffect, useCallback } from "react";
 import { getRestaurantSettings, saveRestaurantSettings } from "@/services/settingsService";
 import { uploadImageAndGetURL } from "@/services/storageService";
-import { auth } from "@/config/firebase"; 
+import { auth } from "@/config/firebase";
 
 const reservationSettingsSchema = z.object({
   minAdvanceReservationHours: z.coerce.number().min(0, "Cannot be negative.").max(168, "Max 1 week."),
@@ -35,9 +35,9 @@ const reservationSettingsSchema = z.object({
 
 const restaurantProfileSchema = z.object({
   restaurantName: z.string().max(100, "Name cannot exceed 100 characters.")
-    .transform(val => val === "" ? null : val) 
-    .nullable() 
-    .optional() 
+    .transform(val => val === "" ? null : val)
+    .nullable()
+    .optional()
     .default(null),
   restaurantImageUrl: z.string().url("Invalid URL for main image.").nullable().optional(),
   restaurantGalleryUrls: z.array(z.string().url("Invalid URL for gallery image.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
@@ -64,7 +64,7 @@ export default function SettingsPage() {
   const [galleryImagePreviews, setGalleryImagePreviews] = useState<(string | null)[]>(Array(6).fill(null));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   const form = useForm<CombinedSettings>({
     resolver: zodResolver(combinedSettingsSchema),
     defaultValues: defaultSettingsData,
@@ -75,8 +75,7 @@ export default function SettingsPage() {
     console.log("[fetchSettings] Auth state before fetching settings:", auth.currentUser ? auth.currentUser.uid : 'No user logged in');
     if (!auth.currentUser) {
         console.warn("[fetchSettings] No user logged in, using default settings template.");
-        // Provide a version of default settings that indicates the user state
-        const placeholderSettings = { ...defaultCombinedSettings, restaurantName: "Please Log In" };
+        const placeholderSettings = { ...defaultSettingsData, restaurantName: "Please Log In" };
         form.reset(placeholderSettings);
         setImagePreview(placeholderSettings.restaurantImageUrl);
         setGalleryImagePreviews([...(placeholderSettings.restaurantGalleryUrls || Array(6).fill(null))]);
@@ -85,7 +84,7 @@ export default function SettingsPage() {
     }
 
     try {
-      const settings = await getRestaurantSettings(); 
+      const settings = await getRestaurantSettings();
       if (settings) {
         const sanitizedSettings: CombinedSettings = {
             minAdvanceReservationHours: settings.minAdvanceReservationHours ?? defaultSettingsData.minAdvanceReservationHours,
@@ -97,10 +96,10 @@ export default function SettingsPage() {
             restaurantImageUrl: settings.restaurantImageUrl ?? null,
             restaurantGalleryUrls: (settings.restaurantGalleryUrls && settings.restaurantGalleryUrls.length <= 6 ? settings.restaurantGalleryUrls : Array(6).fill(null)).map(url => url ?? null),
         };
-        // Ensure gallery always has 6 slots, filling with null if needed
+
         if (sanitizedSettings.restaurantGalleryUrls.length < 6) {
             sanitizedSettings.restaurantGalleryUrls = [
-                ...sanitizedSettings.restaurantGalleryUrls, 
+                ...sanitizedSettings.restaurantGalleryUrls,
                 ...Array(6 - sanitizedSettings.restaurantGalleryUrls.length).fill(null)
             ];
         } else if (sanitizedSettings.restaurantGalleryUrls.length > 6) {
@@ -131,7 +130,7 @@ export default function SettingsPage() {
         variant: "destructive",
       });
       const errorFallbackSettings = { ...defaultSettingsData, restaurantName: "Error Loading Settings" };
-      form.reset(errorFallbackSettings); 
+      form.reset(errorFallbackSettings);
       setImagePreview(errorFallbackSettings.restaurantImageUrl);
       setGalleryImagePreviews(Array(6).fill(null));
     } finally {
@@ -149,7 +148,7 @@ export default function SettingsPage() {
         console.log("[useEffect onAuthStateChanged] No user authenticated. Resetting form, clearing previews.");
         setIsLoading(false);
         const placeholderSettings = { ...defaultSettingsData, restaurantName: "Please Log In To Manage Settings" };
-        form.reset(placeholderSettings); 
+        form.reset(placeholderSettings);
         setImagePreview(null);
         setGalleryImagePreviews(Array(6).fill(null));
       }
@@ -172,8 +171,7 @@ export default function SettingsPage() {
       }
     } else {
         setImageFile(null);
-        setImagePreview(null); 
-        form.setValue("restaurantImageUrl", null, { shouldDirty: true });
+        setImagePreview(form.getValues("restaurantImageUrl")); // Revert to existing URL if file selection is cancelled
     }
   };
 
@@ -193,13 +191,11 @@ export default function SettingsPage() {
       if (!form.formState.isDirty) {
          form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true });
       }
-    } else { 
+    } else {
       newGalleryImageFiles[index] = null;
-      newGalleryImagePreviews[index] = null; 
+      // Revert to existing URL if file selection is cancelled for a gallery slot
+      newGalleryImagePreviews[index] = form.getValues("restaurantGalleryUrls")?.[index] || null;
       setGalleryImagePreviews(newGalleryImagePreviews);
-      const currentGalleryUrls = [...(form.getValues("restaurantGalleryUrls") || Array(6).fill(null))];
-      currentGalleryUrls[index] = null;
-      form.setValue("restaurantGalleryUrls", currentGalleryUrls, { shouldDirty: true });
     }
     setGalleryImageFiles(newGalleryImageFiles);
   };
@@ -216,7 +212,7 @@ export default function SettingsPage() {
         variant: "destructive",
       });
       console.error("[onSubmit] Save settings failed: User not authenticated.");
-      setIsSaving(false); // Explicitly stop saving indication
+      setIsSaving(false);
       return;
     }
     const userId = auth.currentUser.uid;
@@ -224,12 +220,12 @@ export default function SettingsPage() {
 
     setIsSaving(true);
     console.log("[onSubmit] setIsSaving(true)");
-    
+
     const settingsToSave: CombinedSettings = { ...values };
     settingsToSave.restaurantName = values.restaurantName ?? null;
-    settingsToSave.restaurantImageUrl = values.restaurantImageUrl ?? null; // Keep existing URL if no new file & not cleared
+    // Start with the URL from the form (which could be an existing URL or null if cleared)
+    settingsToSave.restaurantImageUrl = values.restaurantImageUrl ?? null;
     settingsToSave.restaurantGalleryUrls = (values.restaurantGalleryUrls ?? Array(6).fill(null)).map(url => url ?? null);
-
 
     try {
       console.log("[onSubmit] Entering try block. Main imageFile:", imageFile ? imageFile.name : 'null');
@@ -242,22 +238,23 @@ export default function SettingsPage() {
         const newUploadedUrl = await uploadImageAndGetURL(imageFile, imagePath);
         console.log("[onSubmit] Main image uploaded successfully. New URL:", newUploadedUrl);
         settingsToSave.restaurantImageUrl = newUploadedUrl;
-      } else if (imagePreview === null && values.restaurantImageUrl !== null) { 
-        // User cleared the preview and there was an existing image URL, so set to null
-        console.log("[onSubmit] Main image preview cleared, setting restaurantImageUrl to null.");
+      } else if (imagePreview === null && form.getValues("restaurantImageUrl") !== null) {
+        // This means user cleared the main image by deselecting/removing file and there was an existing URL
+        console.log("[onSubmit] Main image preview cleared, setting restaurantImageUrl to null in settingsToSave.");
         settingsToSave.restaurantImageUrl = null;
       }
-      // If imageFile is null AND imagePreview has a value, means existing image is kept (already in settingsToSave.restaurantImageUrl from form values).
+      // If imageFile is null AND imagePreview has a value, means existing image is kept (already in settingsToSave.restaurantImageUrl from initial form values).
+
 
       console.log("[onSubmit] Processing gallery images. GalleryImageFiles:", galleryImageFiles.map(f => f ? f.name : 'null'));
-      const finalGalleryUrls: (string | null)[] = [...settingsToSave.restaurantGalleryUrls]; 
-      
-      let galleryUploadOccurred = false;
+      const finalGalleryUrls: (string | null)[] = [...settingsToSave.restaurantGalleryUrls];
+
       for (let i = 0; i < 6; i++) {
         const file = galleryImageFiles[i];
-        console.log(`[onSubmit] Gallery slot ${i}: File present - ${!!file}, Current form URL - ${finalGalleryUrls[i]}`);
-        if (file) { 
-          galleryUploadOccurred = true;
+        const existingFormUrl = form.getValues("restaurantGalleryUrls")?.[i] ?? null;
+        console.log(`[onSubmit] Gallery slot ${i}: File present - ${!!file}, Current form URL - ${existingFormUrl}, Preview - ${galleryImagePreviews[i]}`);
+
+        if (file) {
           const timestamp = Date.now();
           const uniqueFileName = `gallery_slot_${i}_${timestamp}_${file.name.replace(/\s+/g, '_')}`;
           const galleryImagePath = `restaurant/${userId}/gallery/${uniqueFileName}`;
@@ -273,32 +270,34 @@ export default function SettingsPage() {
               description: uploadError instanceof Error ? uploadError.message : "Could not upload image.",
               variant: "destructive",
             });
-            // Keep original URL from form if upload fails
-            // finalGalleryUrls[i] is already settingsToSave.restaurantGalleryUrls[i]
+            // Keep original URL from form if upload fails (already in finalGalleryUrls[i] from settingsToSave)
           }
-        } else if (settingsToSave.restaurantGalleryUrls[i] === null && galleryImagePreviews[i] === null) {
-           // This means the slot was explicitly cleared by the user
+        } else if (galleryImagePreviews[i] === null && existingFormUrl !== null) {
+           // User cleared this gallery slot by deselecting/removing file
+           console.log(`[onSubmit] Gallery slot ${i} preview cleared, setting URL to null.`);
            finalGalleryUrls[i] = null;
         }
+        // If no new file and preview exists, it means the existing URL is kept (already in finalGalleryUrls[i])
       }
       settingsToSave.restaurantGalleryUrls = finalGalleryUrls;
-      
+
       console.log("[onSubmit] Attempting to save settings to Firestore with data:", JSON.stringify(settingsToSave));
-      await saveRestaurantSettings(settingsToSave); 
+      await saveRestaurantSettings(settingsToSave);
       console.log("[onSubmit] Settings saved successfully to Firestore.");
       toast({
         title: "Settings Updated",
         description: "Restaurant settings have been successfully saved.",
       });
 
+      // After successful save, update the form with the potentially new URLs and reset states
       const newFormValues = { ...settingsToSave };
-      form.reset(newFormValues, { keepDirty: false, keepValues: false }); 
+      form.reset(newFormValues, { keepDirty: false, keepValues: false });
       console.log("[onSubmit] Form reset with new values:", JSON.stringify(newFormValues));
-      
-      setImageFile(null); 
-      setImagePreview(newFormValues.restaurantImageUrl); // Update preview to saved URL
-      setGalleryImageFiles(Array(6).fill(null)); 
-      setGalleryImagePreviews([...(newFormValues.restaurantGalleryUrls || Array(6).fill(null))]); // Update previews to saved URLs
+
+      setImageFile(null);
+      setImagePreview(newFormValues.restaurantImageUrl);
+      setGalleryImageFiles(Array(6).fill(null));
+      setGalleryImagePreviews([...(newFormValues.restaurantGalleryUrls || Array(6).fill(null))]);
       console.log("[onSubmit] Local file and preview states reset.");
 
     } catch (error) {
@@ -314,6 +313,7 @@ export default function SettingsPage() {
       setIsSaving(false);
     }
   }
+
 
   if (isLoading) {
     return (
@@ -363,7 +363,7 @@ export default function SettingsPage() {
                   <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm">
                     <Image src={imagePreview} alt="Restaurant preview" layout="fill" objectFit="cover" data-ai-hint="logo restaurant" />
                   </div>
-                ) : ( 
+                ) : (
                   <div className="mt-4 relative w-48 h-48 rounded-md overflow-hidden border shadow-sm flex items-center justify-center bg-muted/30">
                     <ImageIcon className="h-16 w-16 text-muted-foreground" />
                   </div>
@@ -372,14 +372,14 @@ export default function SettingsPage() {
                 <FormField
                   control={form.control}
                   name="restaurantImageUrl"
-                  render={() => <FormMessage />} 
+                  render={() => <FormMessage />}
                 />
               </FormItem>
 
               <FormField
                 control={form.control}
                 name="restaurantGalleryUrls"
-                render={() => ( 
+                render={() => (
                 <FormItem className="md:col-span-2 pt-4">
                   <FormLabel className="font-body text-lg flex items-center">
                     <GalleryHorizontalEnd className="mr-2 h-5 w-5 text-muted-foreground" />
@@ -414,7 +414,7 @@ export default function SettingsPage() {
                     ))}
                   </div>
                   <FormDescription className="font-body mt-2">Upload images for your restaurant's gallery. Max 5MB each. Clear an input to remove an image.</FormDescription>
-                   <FormMessage> 
+                   <FormMessage>
                     {typeof form.formState.errors.restaurantGalleryUrls?.message === 'string' && form.formState.errors.restaurantGalleryUrls.message}
                    </FormMessage>
                 </FormItem>
@@ -422,7 +422,7 @@ export default function SettingsPage() {
                 />
             </CardContent>
           </Card>
-          
+
           <Card className="shadow-lg rounded-xl form-interaction-animate">
             <CardHeader>
               <CardTitle className="font-headline flex items-center">
@@ -526,3 +526,4 @@ export default function SettingsPage() {
   );
 }
 
+    
