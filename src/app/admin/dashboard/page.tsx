@@ -1,51 +1,106 @@
 
-"use client"; // This page uses client-side interactivity (Link, Button) but data should be fetched.
+"use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarCheck, Users, BarChart3, PlusCircle, Edit, AlertTriangle, Info } from "lucide-react";
+import { CalendarCheck, Users, BarChart3, PlusCircle, Edit, AlertTriangle, Info, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-
-// TODO: Implement actual data fetching for dashboard statistics and recent activity.
-// For now, demo data has been removed and placeholders are used.
+import { getBookings } from "@/services/bookingService";
+import type { Booking } from "@/lib/types";
+import { format, parseISO, formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface DashboardStats {
-  upcomingBookings: number | string;
-  availableTables: number | string;
-  occupancyRate: number | string; // percentage
-  guestsToday: number | string;
+  upcomingBookings: number;
+  availableTables: string; // Remains string for "N/A" or placeholder
+  occupancyRate: string;   // Remains string for "N/A" or placeholder
+  guestsToday: number;
 }
 
 interface ActivityItem {
-  id: string | number;
+  id: string;
   message: string;
   time: string;
-  type: 'booking' | 'cancellation' | 'system';
+  type: 'booking' | 'cancellation' | 'system' | 'update';
 }
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
-    upcomingBookings: "0",
-    availableTables: "0",
-    occupancyRate: "0",
-    guestsToday: "0",
+    upcomingBookings: 0,
+    availableTables: "-",
+    occupancyRate: "-",
+    guestsToday: 0,
   });
   const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // Simulate loading
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Simulate data fetching
-    const timer = setTimeout(() => {
-      // In a real app, you would fetch data here and then:
-      // setStats({ upcomingBookings: fetchedStats.upcoming, ... });
-      // setActivity(fetchedActivity);
-      setIsLoading(false); // Set loading to false after "fetching"
-    }, 1500); // Simulate a 1.5 second load time
+    const fetchDashboardData = async () => {
+      setIsLoading(true);
+      try {
+        const allBookings = await getBookings();
+        const todayFormatted = format(new Date(), 'yyyy-MM-dd');
 
-    return () => clearTimeout(timer);
-  }, []);
+        const todaysBookings = allBookings.filter(b => b.date === todayFormatted);
+
+        const upcomingBookingsCount = todaysBookings.filter(
+          b => b.status === 'confirmed' || b.status === 'pending'
+        ).length;
+
+        const guestsTodayCount = todaysBookings
+          .filter(b => b.status === 'confirmed' || b.status === 'pending' || b.status === 'seated')
+          .reduce((sum, b) => sum + b.partySize, 0);
+
+        const recentActivityItems = allBookings
+          .slice(0, 5) // Get the 5 most recent bookings (assuming getBookings sorts by createdAt desc)
+          .map((booking): ActivityItem => {
+            let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')} at ${booking.time}. Status: ${booking.status}.`;
+            if (booking.status === 'cancelled') {
+              message = `Booking for ${booking.guestName} was cancelled.`;
+            } else if (booking.status === 'confirmed') {
+              message = `Booking for ${booking.guestName} confirmed for ${format(parseISO(booking.date + 'T00:00:00'), 'MMM d')}.`;
+            }
+            return {
+              id: booking.id,
+              message: message,
+              time: `${formatDistanceToNow(parseISO(booking.createdAt))} ago`,
+              type: booking.status === 'cancelled' ? 'cancellation' : 'booking',
+            };
+          });
+        
+        setStats({
+          upcomingBookings: upcomingBookingsCount,
+          availableTables: "N/A", // Placeholder: Real data needed
+          occupancyRate: "N/A",   // Placeholder: Real data needed
+          guestsToday: guestsTodayCount,
+        });
+        setActivity(recentActivityItems);
+
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+        toast({
+          title: "Error Loading Dashboard",
+          description: "Could not retrieve dashboard data. Please try again.",
+          variant: "destructive",
+        });
+        // Set to default/error state
+        setStats({
+          upcomingBookings: 0,
+          availableTables: "Error",
+          occupancyRate: "Error",
+          guestsToday: 0,
+        });
+        setActivity([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [toast]);
 
 
   return (
@@ -74,18 +129,27 @@ export default function AdminDashboardPage() {
             <CalendarCheck className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-headline">{isLoading ? "-" : stats.upcomingBookings}</div>
-            <p className="text-xs text-muted-foreground font-body">Today's upcoming reservations.</p>
+            {isLoading ? (
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            ) : (
+              <div className="text-3xl font-bold font-headline">{stats.upcomingBookings}</div>
+            )}
+            <p className="text-xs text-muted-foreground font-body">Today's confirmed/pending.</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg rounded-xl">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium font-body">Available Tables</CardTitle>
-            <Users className="h-5 w-5 text-green-500" />
+            {/* Using a generic Users icon as table icon might not be available or suitable */}
+            <Users className="h-5 w-5 text-green-500" /> 
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-headline">{isLoading ? "-" : stats.availableTables}</div>
-            <p className="text-xs text-muted-foreground font-body">Currently available for booking.</p>
+             {isLoading ? (
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            ) : (
+              <div className="text-3xl font-bold font-headline">{stats.availableTables}</div>
+            )}
+            <p className="text-xs text-muted-foreground font-body">Currently (Data N/A).</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg rounded-xl">
@@ -94,8 +158,12 @@ export default function AdminDashboardPage() {
             <BarChart3 className="h-5 w-5 text-accent" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-headline">{isLoading ? "-" : stats.occupancyRate}{isLoading ? "" : "%"}</div>
-            <p className="text-xs text-muted-foreground font-body">Current occupancy.</p>
+            {isLoading ? (
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            ) : (
+              <div className="text-3xl font-bold font-headline">{stats.occupancyRate}{stats.occupancyRate !== "N/A" && stats.occupancyRate !== "-" && stats.occupancyRate !== "Error" ? "%" : ""}</div>
+            )}
+            <p className="text-xs text-muted-foreground font-body">Current (Data N/A).</p>
           </CardContent>
         </Card>
         <Card className="shadow-lg rounded-xl">
@@ -104,22 +172,28 @@ export default function AdminDashboardPage() {
             <Users className="h-5 w-5 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-headline">{isLoading ? "-" : stats.guestsToday}</div>
+            {isLoading ? (
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+            ) : (
+              <div className="text-3xl font-bold font-headline">{stats.guestsToday}</div>
+            )}
             <p className="text-xs text-muted-foreground font-body">Total guests with bookings.</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Placeholder for charts or more detailed views */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg rounded-xl">
           <CardHeader>
             <CardTitle className="font-headline">Recent Activity</CardTitle>
-            <CardDescription className="font-body">Latest updates and notifications.</CardDescription>
+            <CardDescription className="font-body">Latest booking updates.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {isLoading ? (
-              <p className="font-body text-muted-foreground">Loading activity...</p>
+              <div className="flex items-center text-muted-foreground font-body">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading activity...
+              </div>
             ) : activity.length > 0 ? (
               activity.map((item) => (
                 <div key={item.id} className="flex items-start space-x-3">
@@ -138,7 +212,6 @@ export default function AdminDashboardPage() {
             ) : (
               <p className="font-body text-muted-foreground">No recent activity to display.</p>
             )}
-             {/* <Button variant="link" className="p-0 h-auto text-primary font-body">View all activity</Button> */}
           </CardContent>
         </Card>
         <Card className="shadow-lg rounded-xl">
@@ -154,10 +227,11 @@ export default function AdminDashboardPage() {
        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-md shadow">
         <h3 className="font-headline text-lg text-blue-700">Note for Developers:</h3>
         <p className="font-body text-blue-600">
-          The statistics and recent activity on this dashboard are currently placeholders.
-          Please implement data fetching logic to display real-time information from your backend services.
+          "Available Tables" and "Occupancy Rate" statistics, and the "Table Overview" visual are currently placeholders.
+          Full implementation requires a dedicated `tables` collection in Firestore and restaurant capacity settings.
         </p>
       </div>
     </div>
   );
 }
+
