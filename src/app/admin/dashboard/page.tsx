@@ -44,7 +44,6 @@ export default function AdminDashboardPage() {
     setIsLoading(true);
     if (!auth.currentUser) {
       console.warn("[Dashboard] Attempted to fetch data without an authenticated user. Waiting for auth state.");
-      // Toast will be handled by onAuthStateChanged if still no user
       setIsLoading(false);
       return;
     }
@@ -56,11 +55,11 @@ export default function AdminDashboardPage() {
         getOccupancyRate()
       ]);
       
-      setTables(allTables);
+      setTables(allTables.sort((a, b) => a.name.localeCompare(b.name)));
+
 
       const todaysBookings = allBookings.filter(b => {
         try {
-            // Ensure date is valid before parsing
             const parsedDate = parseISO(b.date);
             return isValid(parsedDate) && isToday(parsedDate);
         } catch (e) {
@@ -85,11 +84,11 @@ export default function AdminDashboardPage() {
         })
         .slice(0, 5)
         .map((booking): ActivityItem => {
-          let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${booking.date ? format(parseISO(booking.date + 'T00:00:00'), 'MMM d') : 'N/A'} at ${booking.time}. Status: ${booking.status}.`;
+          let message = `Booking for ${booking.guestName} (${booking.partySize}) on ${booking.date ? format(parseISO(booking.date), 'MMM d') : 'N/A'} at ${booking.time}. Status: ${booking.status}.`;
             if (booking.status === 'cancelled') {
               message = `Booking for ${booking.guestName} was cancelled.`;
             } else if (booking.status === 'confirmed') {
-              message = `Booking for ${booking.guestName} confirmed for ${booking.date ? format(parseISO(booking.date + 'T00:00:00'), 'MMM d') : 'N/A'}.`;
+              message = `Booking for ${booking.guestName} confirmed for ${booking.date ? format(parseISO(booking.date), 'MMM d') : 'N/A'}.`;
             }
           return {
             id: booking.id,
@@ -135,15 +134,11 @@ export default function AdminDashboardPage() {
         setStats({ upcomingBookings: 0, availableTables: 0, occupancyRate: 0, guestsToday: 0, totalTables: 0 });
         setActivity([]);
         setTables([]);
-        toast({
-            title: "Authentication Required",
-            description: "Please log in to view the dashboard.",
-            variant: "destructive",
-        });
+        // Do not toast here as login page handles its own messages
       }
     });
     return () => unsubscribe();
-  }, [fetchDashboardData, toast]);
+  }, [fetchDashboardData]);
 
   const handleTableStatusChange = async (tableId: string, newStatus: TableStatus) => {
     if (!auth.currentUser) {
@@ -156,7 +151,19 @@ export default function AdminDashboardPage() {
         title: "Table Status Updated",
         description: `Table status changed to ${newStatus}. Dashboard will refresh.`,
       });
-      fetchDashboardData(); 
+      // Re-fetch only table-related data or the whole dashboard
+      const [allTables, availableTablesCount, occupancy] = await Promise.all([
+        getTables(),
+        getAvailableTablesCount(),
+        getOccupancyRate()
+      ]);
+      setTables(allTables.sort((a, b) => a.name.localeCompare(b.name)));
+      setStats(prev => ({
+        ...prev,
+        availableTables: availableTablesCount,
+        occupancyRate: occupancy,
+        totalTables: allTables.length,
+      }));
     } catch (error) {
       console.error("Failed to update table status from dashboard:", error);
       toast({
@@ -193,7 +200,7 @@ export default function AdminDashboardPage() {
             <CalendarCheck className="h-5 w-5 text-primary" />
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && stats.upcomingBookings === 0 ? ( // Show loader if loading and no data yet
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-3xl font-bold font-headline">{stats.upcomingBookings}</div>
@@ -207,7 +214,7 @@ export default function AdminDashboardPage() {
             <TableIconLucide className="h-5 w-5 text-green-500" /> 
           </CardHeader>
           <CardContent>
-             {isLoading ? (
+             {isLoading && stats.availableTables === 0 && stats.totalTables === 0 ? (
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-3xl font-bold font-headline">{stats.availableTables} / {stats.totalTables}</div>
@@ -221,7 +228,7 @@ export default function AdminDashboardPage() {
             <Percent className="h-5 w-5 text-accent" />
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && stats.occupancyRate === 0 && tables.length > 0 ? ( // Show loader if loading occupancy for existing tables
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-3xl font-bold font-headline">{stats.occupancyRate}%</div>
@@ -235,7 +242,7 @@ export default function AdminDashboardPage() {
             <Users className="h-5 w-5 text-purple-500" />
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && stats.guestsToday === 0 ? (
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-3xl font-bold font-headline">{stats.guestsToday}</div>
@@ -249,15 +256,15 @@ export default function AdminDashboardPage() {
         <Card className="shadow-lg rounded-xl xl:col-span-2">
             <CardHeader>
                 <CardTitle className="font-headline">Table Overview</CardTitle>
-                <CardDescription className="font-body">Current status of all restaurant tables.</CardDescription>
+                <CardDescription className="font-body">Current status of all restaurant tables. Click status to change or view booking.</CardDescription>
             </CardHeader>
             <CardContent>
-                {isLoading ? (
+                {isLoading && tables.length === 0 ? ( // Show loader only if truly loading initial tables
                      <div className="flex items-center justify-center h-40">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         <p className="ml-2 font-body">Loading table overview...</p>
                     </div>
-                ) : tables.length === 0 ? (
+                ) : !isLoading && tables.length === 0 && auth.currentUser ? ( // No tables configured message
                     <div className="text-center py-10">
                         <TableIconLucide className="mx-auto h-12 w-12 text-muted-foreground" />
                         <h3 className="mt-4 text-lg font-medium font-body">No Tables Configured</h3>
@@ -267,6 +274,14 @@ export default function AdminDashboardPage() {
                          <Button asChild className="mt-4">
                             <Link href="/admin/tables">Configure Tables</Link>
                         </Button>
+                    </div>
+                ) : !auth.currentUser && !isLoading ? ( // Not logged in message
+                     <div className="text-center py-10">
+                        <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
+                        <h3 className="mt-4 text-lg font-medium font-body">Please Log In</h3>
+                        <p className="mt-1 text-sm text-muted-foreground font-body">
+                            Log in to view and manage the table overview.
+                        </p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -288,7 +303,7 @@ export default function AdminDashboardPage() {
             <CardDescription className="font-body">Latest booking updates.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {isLoading ? (
+            {isLoading && activity.length === 0 ? ( // Show loader if loading and no activity yet
               <div className="flex items-center text-muted-foreground font-body">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading activity...
@@ -324,3 +339,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+

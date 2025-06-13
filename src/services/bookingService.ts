@@ -25,11 +25,12 @@ const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData>): Booking 
   return {
     id: docSnap.id,
     guestName: data.guestName,
-    date: data.date,
+    date: data.date, // Should be YYYY-MM-DD string
     time: data.time,
     partySize: data.partySize,
     status: data.status,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+    // Ensure createdAt is handled: Firestore Timestamp or existing ISO string
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString()),
     guestEmail: data.guestEmail,
     guestPhone: data.guestPhone,
     notes: data.notes,
@@ -45,7 +46,6 @@ export const getBookings = async (): Promise<Booking[]> => {
     return querySnapshot.docs.map(mapDocToBooking);
   } catch (error) {
     console.error("Error fetching bookings: ", error);
-    // It's good practice to throw the error or return an empty array/handle it appropriately
     throw error; 
   }
 };
@@ -56,7 +56,7 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
   try {
     const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
       ...bookingData,
-      createdAt: serverTimestamp(), // Use server timestamp for creation
+      createdAt: serverTimestamp(), 
     });
     return docRef.id;
   } catch (error) {
@@ -86,3 +86,22 @@ export const deleteBookingFromFirestore = async (bookingId: string): Promise<voi
     throw error;
   }
 };
+
+// New function to get active bookings for a specific table
+export const getActiveBookingsForTable = async (tableId: string): Promise<Booking[]> => {
+  try {
+    const q = query(
+      collection(db, BOOKINGS_COLLECTION),
+      where('tableId', '==', tableId),
+      where('status', 'in', ['seated', 'confirmed', 'pending']),
+      orderBy('date', 'asc'), // Order by date
+      orderBy('time', 'asc')  // Then by time
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(mapDocToBooking);
+  } catch (error) {
+    console.error(`Error fetching active bookings for table ${tableId}: `, error);
+    throw error;
+  }
+};
+
