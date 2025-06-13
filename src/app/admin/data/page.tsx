@@ -6,12 +6,32 @@ import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Toolt
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, Database, PieChart as PieChartIcon, BarChartBig, CalendarDays } from "lucide-react";
+import { Loader2, AlertTriangle, Database, PieChart as PieChartIcon, BarChartBig, CalendarDays, Calendar as CalendarIconLucide } from "lucide-react";
 import type { Booking } from "@/lib/types";
 import { getBookings } from "@/services/bookingService";
-import { format, subDays, parseISO, isValid as isValidDate } from "date-fns";
+import { 
+  format, 
+  subDays, 
+  parseISO, 
+  isValid as isValidDate,
+  startOfWeek,
+  endOfWeek,
+  subWeeks,
+  startOfMonth,
+  endOfMonth,
+  subMonths,
+  isWithinInterval,
+  startOfDay,
+  endOfDay
+} from "date-fns";
 import { ChartContainer, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from "@/components/ui/chart";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
 interface BookingStatusData {
   name: string;
@@ -20,16 +40,16 @@ interface BookingStatusData {
 }
 
 interface BookingsOverTimeData {
-  date: string;
+  date: string; // Formatted date string for display
   count: number;
 }
 
 const statusColors: Record<Booking['status'], string> = {
-  confirmed: "hsl(var(--chart-1))", // Greenish
-  pending: "hsl(var(--chart-2))",   // Yellowish
-  seated: "hsl(var(--chart-3))",    // Bluish
-  completed: "hsl(var(--chart-4))", // Grayish
-  cancelled: "hsl(var(--chart-5))", // Reddish
+  confirmed: "hsl(var(--chart-1))",
+  pending: "hsl(var(--chart-2))",
+  seated: "hsl(var(--chart-3))",
+  completed: "hsl(var(--chart-4))",
+  cancelled: "hsl(var(--chart-5))",
 };
 
 const statusDisplayNames: Record<Booking['status'], string> = {
@@ -40,12 +60,27 @@ const statusDisplayNames: Record<Booking['status'], string> = {
   cancelled: "Cancelled",
 };
 
+const PREDEFINED_RANGES = [
+  { label: "Last 30 Days", value: "last-30-days" },
+  { label: "This Week", value: "this-week" },
+  { label: "Last Week", value: "last-week" },
+  { label: "This Month", value: "this-month" },
+  { label: "Last Month", value: "last-month" },
+  { label: "All Time", value: "all-time" },
+];
+
 
 export default function DataAnalyticsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 29), // Default to last 30 days
+    to: new Date(),
+  });
+  const [selectedPreset, setSelectedPreset] = useState<string>("last-30-days");
+
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -70,9 +105,74 @@ export default function DataAnalyticsPage() {
     fetchDashboardData();
   }, [toast]);
 
-  const bookingStatusDistribution = useMemo((): BookingStatusData[] => {
+  const handlePredefinedRangeChange = (value: string) => {
+    setSelectedPreset(value);
+    const now = new Date();
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined = endOfDay(now);
+
+    switch (value) {
+      case "this-week":
+        fromDate = startOfWeek(now, { weekStartsOn: 1 }); // Assuming week starts on Monday
+        toDate = endOfWeek(now, { weekStartsOn: 1 });
+        break;
+      case "last-week":
+        const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
+        fromDate = lastWeekStart;
+        toDate = endOfWeek(lastWeekStart, { weekStartsOn: 1 });
+        break;
+      case "this-month":
+        fromDate = startOfMonth(now);
+        toDate = endOfMonth(now);
+        break;
+      case "last-month":
+        const lastMonthStart = startOfMonth(subMonths(now, 1));
+        fromDate = lastMonthStart;
+        toDate = endOfMonth(lastMonthStart);
+        break;
+      case "last-30-days":
+        fromDate = subDays(now, 29);
+        toDate = now; // end of today already set
+        break;
+      case "all-time":
+        setDateRange(undefined);
+        return;
+      default:
+        setDateRange(undefined); // Default to all time if unknown
+        return;
+    }
+    setDateRange({ from: startOfDay(fromDate), to: endOfDay(toDate) });
+  };
+  
+  const onDateRangeSelect = (range: DateRange | undefined) => {
+    if (range?.from && range?.to) {
+        setDateRange({ from: startOfDay(range.from), to: endOfDay(range.to) });
+    } else if (range?.from) { // If only 'from' is selected, set 'to' to be the same day
+        setDateRange({ from: startOfDay(range.from), to: endOfDay(range.from) });
+    } else {
+        setDateRange(range); // Allow clearing
+    }
+    setSelectedPreset(""); // Clear preset if custom range is selected
+  }
+
+  const filteredBookingsByDate = useMemo(() => {
     if (!bookings.length) return [];
-    const counts = bookings.reduce((acc, booking) => {
+    if (!dateRange || !dateRange.from) return bookings; // Return all if no range selected
+
+    const fromDate = dateRange.from;
+    const toDate = dateRange.to || dateRange.from; // If 'to' is not set, use 'from'
+
+    return bookings.filter(booking => {
+      if (!booking.createdAt) return false;
+      const createdAtDate = parseISO(booking.createdAt);
+      return isValidDate(createdAtDate) && isWithinInterval(createdAtDate, { start: fromDate, end: toDate });
+    });
+  }, [bookings, dateRange]);
+
+
+  const bookingStatusDistribution = useMemo((): BookingStatusData[] => {
+    if (!filteredBookingsByDate.length) return [];
+    const counts = filteredBookingsByDate.reduce((acc, booking) => {
       acc[booking.status] = (acc[booking.status] || 0) + 1;
       return acc;
     }, {} as Record<Booking['status'], number>);
@@ -82,7 +182,7 @@ export default function DataAnalyticsPage() {
       value: counts[status],
       fill: statusColors[status],
     }));
-  }, [bookings]);
+  }, [filteredBookingsByDate]);
   
   const bookingStatusChartConfig = useMemo((): ChartConfig => {
     const config: ChartConfig = {};
@@ -93,28 +193,45 @@ export default function DataAnalyticsPage() {
   }, [bookingStatusDistribution]);
 
 
-  const bookingsLast7Days = useMemo((): BookingsOverTimeData[] => {
-    if (!bookings.length) return [];
+  const bookingsOverTimeChartData = useMemo((): BookingsOverTimeData[] => {
+    if (!filteredBookingsByDate.length) return [];
     const dailyCounts: Record<string, number> = {};
-    const sevenDaysAgo = subDays(new Date(), 6); // Include today
 
-    bookings.forEach(booking => {
+    filteredBookingsByDate.forEach(booking => {
       if (booking.createdAt) {
         const createdAtDate = parseISO(booking.createdAt);
-        if (isValidDate(createdAtDate) && createdAtDate >= sevenDaysAgo) {
+        if (isValidDate(createdAtDate)) {
           const dateStr = format(createdAtDate, "yyyy-MM-dd");
           dailyCounts[dateStr] = (dailyCounts[dateStr] || 0) + 1;
         }
       }
     });
     
-    const result: BookingsOverTimeData[] = [];
-    for (let i = 0; i < 7; i++) {
-        const date = format(subDays(new Date(), i), "yyyy-MM-dd");
-        result.push({ date: format(parseISO(date), "MMM d"), count: dailyCounts[date] || 0 });
+    // Generate date range for the chart based on selected dateRange or all bookings
+    let chartStartDate: Date;
+    let chartEndDate: Date;
+
+    if (dateRange?.from) {
+        chartStartDate = dateRange.from;
+        chartEndDate = dateRange.to || dateRange.from;
+    } else if (filteredBookingsByDate.length > 0) {
+        // If no dateRange, find min/max from filtered bookings
+        const sortedBookings = [...filteredBookingsByDate].sort((a,b) => parseISO(a.createdAt).getTime() - parseISO(b.createdAt).getTime());
+        chartStartDate = parseISO(sortedBookings[0].createdAt);
+        chartEndDate = parseISO(sortedBookings[sortedBookings.length-1].createdAt);
+    } else {
+        return []; // No data to chart
     }
-    return result.reverse(); // Show oldest to newest
-  }, [bookings]);
+    
+    const result: BookingsOverTimeData[] = [];
+    let currentDate = chartStartDate;
+    while (currentDate <= chartEndDate) {
+        const dateStr = format(currentDate, "yyyy-MM-dd");
+        result.push({ date: format(currentDate, "MMM d"), count: dailyCounts[dateStr] || 0 });
+        currentDate = subDays(currentDate, -1); // Iterate to next day
+    }
+    return result;
+  }, [filteredBookingsByDate, dateRange]);
 
   const bookingsOverTimeChartConfig = {
     count: {
@@ -124,15 +241,15 @@ export default function DataAnalyticsPage() {
   } satisfies ChartConfig;
 
 
-  const recentBookings = useMemo(() => {
-    return bookings
+  const recentBookingsTableData = useMemo(() => {
+    return filteredBookingsByDate
       .sort((a, b) => {
          const dateA = a.createdAt ? parseISO(a.createdAt).getTime() : 0;
          const dateB = b.createdAt ? parseISO(b.createdAt).getTime() : 0;
-         return dateB - dateA; // Sort by createdAt descending
+         return dateB - dateA; 
       })
       .slice(0, 10);
-  }, [bookings]);
+  }, [filteredBookingsByDate]);
 
   if (isLoading) {
     return (
@@ -154,14 +271,68 @@ export default function DataAnalyticsPage() {
     );
   }
   
-  if (bookings.length === 0 && !isLoading && !error) {
+  const noDataAfterFilter = bookings.length > 0 && filteredBookingsByDate.length === 0 && dateRange?.from;
+
+  if ((bookings.length === 0 && !isLoading && !error) || noDataAfterFilter) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-10rem)] p-4">
-        <Database className="h-12 w-12 text-muted-foreground" />
-        <h2 className="mt-4 text-xl font-headline">No Booking Data Available</h2>
-        <p className="mt-2 font-body text-center text-muted-foreground">
-          There are no bookings yet to analyze. Once bookings are made, this page will populate with insights.
-        </p>
+      <div className="space-y-8">
+        <h1 className="text-3xl font-headline text-foreground">Data Analytics</h1>
+        <div className="flex flex-col sm:flex-row gap-4 items-center p-4 border-b mb-6">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  id="date"
+                  variant={"outline"}
+                  className={cn(
+                    "w-[260px] justify-start text-left font-normal",
+                    !dateRange && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIconLucide className="mr-2 h-4 w-4" />
+                  {dateRange?.from ? (
+                    dateRange.to ? (
+                      <>
+                        {format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}
+                      </>
+                    ) : (
+                      format(dateRange.from, "LLL dd, y")
+                    )
+                  ) : (
+                    <span>Pick a date range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={dateRange?.from}
+                  selected={dateRange}
+                  onSelect={onDateRangeSelect}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+            <Select value={selectedPreset} onValueChange={handlePredefinedRangeChange}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Select period" />
+              </SelectTrigger>
+              <SelectContent>
+                {PREDEFINED_RANGES.map(range => (
+                  <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+        </div>
+        <div className="flex flex-col items-center justify-center h-[calc(100vh-20rem)] p-4">
+            <Database className="h-12 w-12 text-muted-foreground" />
+            <h2 className="mt-4 text-xl font-headline">No Booking Data Available</h2>
+            <p className="mt-2 font-body text-center text-muted-foreground">
+            {noDataAfterFilter 
+                ? "There are no bookings matching the selected date range."
+                : "There are no bookings yet to analyze. Once bookings are made, this page will populate with insights."}
+            </p>
+        </div>
       </div>
     );
   }
@@ -171,20 +342,70 @@ export default function DataAnalyticsPage() {
     <div className="space-y-8">
       <h1 className="text-3xl font-headline text-foreground">Data Analytics</h1>
 
+      <div className="flex flex-col sm:flex-row gap-4 items-center p-4 border-b mb-6">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              id="date"
+              variant={"outline"}
+              className={cn(
+                "w-full sm:w-[260px] justify-start text-left font-normal",
+                !dateRange && "text-muted-foreground"
+              )}
+            >
+              <CalendarIconLucide className="mr-2 h-4 w-4" />
+              {dateRange?.from ? (
+                dateRange.to ? (
+                  <>
+                    {format(dateRange.from, "LLL dd, y")} -{" "}
+                    {format(dateRange.to, "LLL dd, y")}
+                  </>
+                ) : (
+                  format(dateRange.from, "LLL dd, y")
+                )
+              ) : (
+                <span>Pick a date range</span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              initialFocus
+              mode="range"
+              defaultMonth={dateRange?.from}
+              selected={dateRange}
+              onSelect={onDateRangeSelect}
+              numberOfMonths={2}
+            />
+          </PopoverContent>
+        </Popover>
+        <Select value={selectedPreset} onValueChange={handlePredefinedRangeChange}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Select period" />
+          </SelectTrigger>
+          <SelectContent>
+            {PREDEFINED_RANGES.map(range => (
+              <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+
       <Card className="shadow-lg rounded-xl">
         <CardHeader>
           <CardTitle className="font-headline flex items-center">
             <Database className="mr-3 h-6 w-6 text-primary" />
-            Overall Summary
+            Summary for Selected Period
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-center">
             <div className="p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm font-body text-muted-foreground">Total Bookings</p>
-              <p className="text-3xl font-bold font-headline text-primary">{bookings.length}</p>
+              <p className="text-sm font-body text-muted-foreground">Total Bookings in Period</p>
+              <p className="text-3xl font-bold font-headline text-primary">{filteredBookingsByDate.length}</p>
             </div>
-            {/* Add more summary stats here as needed, e.g., Average Party Size */}
+            {/* Add more summary stats here as needed */}
           </div>
         </CardContent>
       </Card>
@@ -196,7 +417,7 @@ export default function DataAnalyticsPage() {
                 <PieChartIcon className="mr-3 h-5 w-5 text-accent" />
                 Booking Status Distribution
             </CardTitle>
-            <CardDescription className="font-body">Proportion of bookings by their current status.</CardDescription>
+            <CardDescription className="font-body">Proportion of bookings by status in the selected period.</CardDescription>
           </CardHeader>
           <CardContent>
             {bookingStatusDistribution.length > 0 ? (
@@ -212,7 +433,7 @@ export default function DataAnalyticsPage() {
                 </PieChart>
               </ChartContainer>
             ) : (
-                 <p className="text-center font-body text-muted-foreground py-8">No status data to display.</p>
+                 <p className="text-center font-body text-muted-foreground py-8">No status data for selected period.</p>
             )}
           </CardContent>
         </Card>
@@ -221,14 +442,14 @@ export default function DataAnalyticsPage() {
           <CardHeader>
             <CardTitle className="font-headline flex items-center">
                 <BarChartBig className="mr-3 h-5 w-5 text-primary" />
-                Bookings Over Last 7 Days
+                Bookings Over Time
             </CardTitle>
-            <CardDescription className="font-body">Number of new bookings created each day.</CardDescription>
+            <CardDescription className="font-body">New bookings created per day in the selected period.</CardDescription>
           </CardHeader>
           <CardContent>
-             {bookingsLast7Days.length > 0 ? (
+             {bookingsOverTimeChartData.length > 0 ? (
                 <ChartContainer config={bookingsOverTimeChartConfig} className="aspect-video max-h-[300px]">
-                    <BarChart data={bookingsLast7Days} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <BarChart data={bookingsOverTimeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                         <CartesianGrid vertical={false} strokeDasharray="3 3" />
                         <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
                         <YAxis allowDecimals={false} tickLine={false} axisLine={false} tickMargin={8} />
@@ -240,7 +461,7 @@ export default function DataAnalyticsPage() {
                     </BarChart>
                 </ChartContainer>
              ) : (
-                <p className="text-center font-body text-muted-foreground py-8">No booking trend data for the last 7 days.</p>
+                <p className="text-center font-body text-muted-foreground py-8">No booking trend data for selected period.</p>
              )}
           </CardContent>
         </Card>
@@ -250,12 +471,12 @@ export default function DataAnalyticsPage() {
         <CardHeader>
           <CardTitle className="font-headline flex items-center">
             <CalendarDays className="mr-3 h-5 w-5 text-primary" />
-            Recent Bookings (Last 10)
+            Recent Bookings in Period (Last 10)
           </CardTitle>
-          <CardDescription className="font-body">A quick view of the latest reservations.</CardDescription>
+          <CardDescription className="font-body">A quick view of the latest reservations in the selected period.</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentBookings.length > 0 ? (
+          {recentBookingsTableData.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -267,7 +488,7 @@ export default function DataAnalyticsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentBookings.map((booking) => (
+                {recentBookingsTableData.map((booking) => (
                   <TableRow key={booking.id}>
                     <TableCell className="font-medium font-body">{booking.guestName}</TableCell>
                     <TableCell className="font-body">
@@ -287,7 +508,7 @@ export default function DataAnalyticsPage() {
               </TableBody>
             </Table>
           ) : (
-            <p className="text-center font-body text-muted-foreground py-8">No recent bookings to display.</p>
+            <p className="text-center font-body text-muted-foreground py-8">No recent bookings to display for selected period.</p>
           )}
         </CardContent>
       </Card>
