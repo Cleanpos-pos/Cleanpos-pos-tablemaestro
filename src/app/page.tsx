@@ -4,14 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus, Camera } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { getPublicRestaurantSettings } from "@/services/settingsService";
 
-export default function HomePage() {
-  const galleryImages = [
-    { src: "https://placehold.co/600x400.png", alt: "Delicious dish 1", hint: "food plate" },
-    { src: "https://placehold.co/600x400.png", alt: "Restaurant interior", hint: "restaurant interior" },
-    { src: "https://placehold.co/600x400.png", alt: "Smiling chef", hint: "chef cooking" },
-    { src: "https://placehold.co/600x400.png", alt: "Tasty dessert", hint: "dessert cake" },
-  ];
+export default async function HomePage() {
+  const settings = await getPublicRestaurantSettings();
+  const galleryImageUrls = settings?.restaurantGalleryUrls?.filter(url => url !== null) as string[] || [];
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-8">
@@ -85,34 +82,33 @@ export default function HomePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-8">
-            <div className="grid grid-cols-2 gap-4">
-              {galleryImages.map((image, index) => (
-                <div key={index} className="rounded-lg overflow-hidden shadow-md aspect-square">
-                  <Image
-                    src={image.src}
-                    alt={image.alt}
-                    width={300}
-                    height={300}
-                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                    data-ai-hint={image.hint}
-                  />
-                </div>
-              ))}
-            </div>
-            {/* Optionally, add a button to a full gallery page if you plan to create one */}
-            {/* 
-            <div className="mt-6 text-center">
-              <Button variant="outline" className="btn-subtle-animate">
-                Explore Full Gallery
-              </Button>
-            </div> 
-            */}
+            {galleryImageUrls.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4">
+                {galleryImageUrls.slice(0, 4).map((url, index) => (
+                  <div key={index} className="rounded-lg overflow-hidden shadow-md aspect-square">
+                    <Image
+                      src={url}
+                      alt={`Restaurant gallery image ${index + 1}`}
+                      width={300}
+                      height={300}
+                      className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                      data-ai-hint="restaurant food" 
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground font-body py-4">
+                The restaurant's photo gallery is not available at the moment. Please check back later or visit the restaurant to see our offerings!
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
 
       <footer className="mt-12 text-center text-muted-foreground text-sm font-body">
         <p>&copy; {new Date().getFullYear()} Table Maestro V2. All rights reserved.</p>
+        {settings?.restaurantName && <p className="text-xs">Proudly serving: {settings.restaurantName}</p>}
       </footer>
     </div>
   );
