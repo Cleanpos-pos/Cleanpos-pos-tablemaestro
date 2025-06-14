@@ -25,6 +25,7 @@ import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import type { Booking, BookingInput } from "@/lib/types";
 import { addBookingToFirestore, updateBookingInFirestore } from "@/services/bookingService";
+import { updateTable } from "@/services/tableService"; // Import updateTable
 import { useRouter } from "next/navigation";
 
 interface AdminBookingFormProps {
@@ -35,7 +36,7 @@ const adminBookingFormSchema = z.object({
   guestName: z.string().min(2, "Name must be at least 2 characters."),
   guestEmail: z.string().email("Invalid email address.").optional().or(z.literal('')),
   guestPhone: z.string().min(10, "Phone number seems too short.").optional().or(z.literal('')),
-  date: z.date({ required_error: "A date is required." }).optional(), // Optional because initial state might not have it
+  date: z.date({ required_error: "A date is required." }).optional(),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
   partySize: z.coerce.number().min(1, "At least 1 guest."),
   status: z.enum(['confirmed', 'pending', 'seated', 'completed', 'cancelled']),
@@ -92,8 +93,13 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
 
     const bookingDataForFirestore = {
       ...values,
-      date: format(values.date, "yyyy-MM-dd"), // Format date for Firestore
+      date: format(values.date, "yyyy-MM-dd"), 
     };
+
+    const oldTableId = existingBooking?.tableId;
+    const oldStatus = existingBooking?.status;
+    const newTableId = bookingDataForFirestore.tableId;
+    const newStatus = bookingDataForFirestore.status;
 
     try {
       if (isEditMode && existingBooking) {
@@ -104,17 +110,39 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
           action: <CheckCircle className="text-green-500" />,
         });
       } else {
-        await addBookingToFirestore(bookingDataForFirestore as BookingInput); // Type assertion needed as id and createdAt are handled by service
+        await addBookingToFirestore(bookingDataForFirestore as BookingInput); 
         toast({
           title: "Booking Created",
           description: `New reservation for ${values.guestName} has been successfully created.`,
            action: <CheckCircle className="text-green-500" />,
         });
       }
-      router.push("/admin/bookings"); // Redirect to bookings list
-      router.refresh(); // Force refresh of the bookings list page data
+
+      // Automated table status updates
+      if (newStatus === 'seated' && newTableId) {
+        console.log(`[AdminBookingForm] Booking for ${values.guestName} SEATED at table ${newTableId}. Setting table to 'occupied'.`);
+        await updateTable(newTableId, { status: 'occupied' });
+      }
+
+      // If the booking was previously seated at a table, and now it's not, or it moved tables
+      if (oldStatus === 'seated' && oldTableId) {
+        if (newStatus !== 'seated' || newTableId !== oldTableId) {
+          console.log(`[AdminBookingForm] Booking for ${values.guestName} no longer seated at ${oldTableId} (new status: ${newStatus}, new table: ${newTableId}). Setting old table ${oldTableId} to 'available'.`);
+          await updateTable(oldTableId, { status: 'available' });
+        }
+      }
+      
+      // If the booking status is 'seated' and it moved from an old table to a new table
+      if (newStatus === 'seated' && newTableId && oldTableId && oldTableId !== newTableId && oldStatus === 'seated') {
+          console.log(`[AdminBookingForm] Booking for ${values.guestName} MOVED from ${oldTableId} to ${newTableId} while 'seated'. Setting old table ${oldTableId} to 'available'.`);
+          await updateTable(oldTableId, { status: 'available' });
+      }
+
+
+      router.push("/admin/bookings"); 
+      router.refresh(); 
     } catch (error) {
-      console.error("Failed to save booking:", error);
+      console.error("Failed to save booking or update table status:", error);
       toast({
         title: isEditMode ? "Update Failed" : "Creation Failed",
         description: `Could not save the booking for ${values.guestName}. Please try again. Error: ${error instanceof Error ? error.message : String(error)}`,
@@ -259,9 +287,9 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
               <FormItem>
                 <FormLabel className="font-body flex items-center">Table ID (Optional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="e.g. T5, P2" {...field} className="font-body" />
+                  <Input placeholder="e.g. T5, P2 (Firestore Document ID)" {...field} className="font-body" />
                 </FormControl>
-                <FormDescription className="font-body text-xs">Assign a specific table if known.</FormDescription>
+                <FormDescription className="font-body text-xs">Assign a specific table if known. Use the table's Firestore ID.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { getBookings, deleteBookingFromFirestore } from "@/services/bookingService";
+import { updateTable } from "@/services/tableService"; // Import updateTable
 
 export default function BookingManagementPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -65,7 +66,6 @@ export default function BookingManagementPage() {
         statusFilter.length === 0 || statusFilter.includes(booking.status)
       )
       .sort((a, b) => {
-         // Ensure date and time are valid before creating Date objects
         const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
         const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
         return dateA.getTime() - dateB.getTime();
@@ -86,6 +86,23 @@ export default function BookingManagementPage() {
         await deleteBookingFromFirestore(bookingToDelete.id);
         setBookings(prev => prev.filter(b => b.id !== bookingToDelete.id));
         toast({ title: "Booking Deleted", description: `Booking for ${bookingToDelete.guestName} has been deleted.`});
+
+        // Automated table status update
+        if (bookingToDelete.status === 'seated' && bookingToDelete.tableId) {
+          try {
+            console.log(`[BookingManagementPage] Booking for ${bookingToDelete.guestName} (seated at ${bookingToDelete.tableId}) DELETED. Setting table ${bookingToDelete.tableId} to 'available'.`);
+            await updateTable(bookingToDelete.tableId, { status: 'available' });
+          } catch (tableError) {
+            console.error(`[BookingManagementPage] Failed to update table status for ${bookingToDelete.tableId} after deleting booking:`, tableError);
+            // Optionally notify admin about this secondary failure
+            toast({
+              title: "Table Status Update Failed",
+              description: `Booking deleted, but could not update status for table ${bookingToDelete.tableId}. Please check manually.`,
+              variant: "destructive",
+            });
+          }
+        }
+
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         console.error("Failed to delete booking:", error);
@@ -253,4 +270,3 @@ export default function BookingManagementPage() {
     </div>
   );
 }
-
