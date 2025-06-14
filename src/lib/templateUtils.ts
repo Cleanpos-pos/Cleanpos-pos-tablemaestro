@@ -1,6 +1,3 @@
-
-'use server';
-
 /**
  * @fileOverview Utility for rendering simple string templates with placeholders.
  */
