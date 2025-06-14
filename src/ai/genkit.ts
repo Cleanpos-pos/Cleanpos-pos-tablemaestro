@@ -1,7 +1,8 @@
+
 'use server';
 
 import { genkit } from 'genkit';
-import { googleAI } from '@genkit-ai/google-ai';
+import { googleAI } from '@genkit-ai/googleai';
 // import { firebase } from 'genkit/firebase'; // Uncomment if you plan to use Firebase for trace/flow state storage
 
 // Initialize Genkit with the Google AI plugin.
