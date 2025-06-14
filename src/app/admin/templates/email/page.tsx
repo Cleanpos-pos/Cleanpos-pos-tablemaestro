@@ -433,7 +433,7 @@ export default function EmailTemplatePage() {
                           <p className="text-xs font-body text-blue-700">
                               The "Send Test Email" feature uses the **last saved version** of the template.
                               Ensure your Brevo API key is correctly set in the `.env` file (requires server restart after adding/changing).
-                              The sender email is currently hardcoded in `sendEmailFlow.ts` as `{DEFAULT_SENDER_EMAIL}`; ensure this is a verified sender in your Brevo account.
+                              The sender email is currently hardcoded in `sendEmailFlow.ts` as `noreply@yourrestaurant.com`; ensure this is a verified sender in your Brevo account.
                           </p>
                       </div>
                   </div>
