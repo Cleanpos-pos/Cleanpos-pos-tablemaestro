@@ -200,11 +200,17 @@ export default function EmailTemplatePage() {
         title: "Template Saved",
         description: `The "${templateConfigurations.find(t=>t.id === currentTemplateId)?.label}" email template has been updated.`,
       });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    } catch (error: any) { // Changed to 'any' to access potential 'code' property
+      let userFriendlyMessage = "Could not save the template. Please try again.";
+      if (error?.code === 'permission-denied' || (error instanceof Error && (error.message.toLowerCase().includes('permission-denied') || error.message.toLowerCase().includes('insufficient permissions')))) {
+        userFriendlyMessage = "Save failed due to insufficient permissions. Please check your Firestore security rules to ensure you have write access to your email templates. (Path: restaurantConfig/YOUR_USER_ID/emailTemplates/TEMPLATE_ID)";
+      } else if (error instanceof Error) {
+        userFriendlyMessage = `Could not save the template: ${error.message}`;
+      }
+      
       toast({
         title: "Save Failed",
-        description: `Could not save the template: ${errorMessage}`,
+        description: userFriendlyMessage,
         variant: "destructive",
       });
     } finally {
@@ -227,14 +233,7 @@ export default function EmailTemplatePage() {
     }
 
     setIsSendingTest(true);
-    setIsTestEmailDialogOpen(false); // Close dialog before sending
-
-    // Save current form state before sending test, in case of unsaved changes
-    // This is optional, or you could prompt the user to save first.
-    // For simplicity, we'll send with the current *loaded* or *saved* template content.
-    // If you want to send with *unsaved* form content, you'd pass form.getValues()
-    // to the action, which would require the action to accept subject/body directly.
-    // For now, it fetches the saved template.
+    setIsTestEmailDialogOpen(false); 
 
     toast({
       title: `Sending Test Email...`,
