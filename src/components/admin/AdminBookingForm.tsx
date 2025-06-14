@@ -48,6 +48,9 @@ const adminBookingFormSchema = z.object({
 
 type AdminBookingFormValues = z.infer<typeof adminBookingFormSchema>;
 
+const CLEAR_TABLE_ID_SENTINEL = "__CLEAR_SELECTION__";
+const NO_TABLES_DUMMY_VALUE = "__NO_TABLES_AVAILABLE__";
+
 const getInitialDate = (dateString?: string): Date | undefined => {
   if (dateString) {
     const parsedDate = parseISO(dateString);
@@ -124,7 +127,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     const bookingDataForFirestore: BookingInput = {
       ...values,
       date: format(values.date, "yyyy-MM-dd"),
-      tableId: values.tableId || undefined, // Ensure empty string becomes undefined for Firestore
+      tableId: values.tableId || undefined, 
     };
 
     const oldTableId = existingBooking?.tableId;
@@ -152,7 +155,6 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
         });
       }
 
-      // Automated table status updates
       if (newStatus === 'seated' && newTableId) {
         try {
           console.log(`[AdminBookingForm] Booking for ${values.guestName} SEATED at table ${newTableId}. Setting table to 'occupied'.`);
@@ -345,8 +347,14 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
               <FormItem>
                 <FormLabel className="font-body flex items-center"><SquareStack className="mr-2 h-4 w-4 text-muted-foreground"/>Assign Table (Optional)</FormLabel>
                 <Select 
-                  onValueChange={field.onChange} 
-                  value={field.value || ""}
+                  onValueChange={(selectedValue) => {
+                    if (selectedValue === CLEAR_TABLE_ID_SENTINEL) {
+                      field.onChange(""); // Set react-hook-form field to empty string
+                    } else {
+                      field.onChange(selectedValue);
+                    }
+                  }} 
+                  value={field.value || ""} // If field.value is "", Select shows placeholder
                   disabled={isLoadingTables}
                 >
                   <FormControl>
@@ -360,12 +368,12 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
                         <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading...
                       </div>
                     ) : tables.length === 0 ? (
-                      <SelectItem value="" disabled className="font-body">
+                      <SelectItem value={NO_TABLES_DUMMY_VALUE} disabled className="font-body text-muted-foreground">
                         No tables available or configured.
                       </SelectItem>
                     ) : (
                       <>
-                        <SelectItem value="" className="font-body">
+                        <SelectItem value={CLEAR_TABLE_ID_SENTINEL} className="font-body">
                           None (Unassign Table)
                         </SelectItem>
                         {tables.map((table) => (
