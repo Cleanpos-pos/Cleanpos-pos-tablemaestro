@@ -9,7 +9,7 @@
  */
 
 import { ai } from '@/ai/genkit'; // Assuming your genkit.ts is here
-import { z } from 'genkit/zod'; // Use Genkit's Zod for schema definition
+import { z } from 'genkit'; // Use Genkit's Zod for schema definition
 import type { CombinedSettings } from '@/lib/types';
 import { getRestaurantSettings } from '@/services/settingsService'; // To get restaurant name
 
