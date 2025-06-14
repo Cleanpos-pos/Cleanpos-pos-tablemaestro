@@ -17,11 +17,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EmailTemplateInput } from "@/lib/types";
 import { useEffect, useState, useCallback } from "react";
-import { getEmailTemplate, saveEmailTemplate, BOOKING_CONFIRMATION_TEMPLATE_ID, defaultBookingConfirmationTemplatePlaceholders } from "@/services/templateService";
+import { 
+  getEmailTemplate, 
+  saveEmailTemplate, 
+  BOOKING_ACCEPTED_TEMPLATE_ID,
+  defaultBookingAcceptedPlaceholders,
+  NO_AVAILABILITY_TEMPLATE_ID,
+  defaultNoAvailabilityPlaceholders,
+  WAITING_LIST_TEMPLATE_ID,
+  defaultWaitingListPlaceholders
+} from "@/services/templateService";
 import { auth } from "@/config/firebase";
 
 const emailTemplateFormSchema = z.object({
@@ -31,21 +41,72 @@ const emailTemplateFormSchema = z.object({
 
 type EmailTemplateFormValues = z.infer<typeof emailTemplateFormSchema>;
 
-const placeholderDescriptions: Record<string, string> = {
-  '{{guestName}}': "The full name of the guest who made the booking.",
-  '{{bookingDate}}': "The date of the reservation (e.g., July 26, 2024).",
-  '{{bookingTime}}': "The time of the reservation (e.g., 07:00 PM).",
-  '{{partySize}}': "The number of guests in the booking.",
+interface TemplateConfig {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  defaultPlaceholders: string[];
+  placeholderDetails: Record<string, string>;
+}
+
+const commonPlaceholderDetails: Record<string, string> = {
+  '{{guestName}}': "The full name of the guest.",
   '{{restaurantName}}': "The name of your restaurant, as configured in settings.",
-  '{{notes}}': "Any special notes or requests included with the booking. Use with {{#if notes}} ... {{/if}} for conditional display.",
 };
 
+const templateConfigurations: TemplateConfig[] = [
+  {
+    id: BOOKING_ACCEPTED_TEMPLATE_ID,
+    label: "Booking Accepted",
+    description: "Email sent when a guest's booking is confirmed.",
+    icon: MailCheck,
+    defaultPlaceholders: defaultBookingAcceptedPlaceholders,
+    placeholderDetails: {
+      ...commonPlaceholderDetails,
+      '{{bookingDate}}': "The date of the reservation (e.g., July 26, 2024).",
+      '{{bookingTime}}': "The time of the reservation (e.g., 07:00 PM).",
+      '{{partySize}}': "The number of guests in the booking.",
+      '{{notes}}': "Any special notes or requests. Use {{#if notes}} ... {{/if}} for conditional display.",
+    }
+  },
+  {
+    id: NO_AVAILABILITY_TEMPLATE_ID,
+    label: "No Availability",
+    description: "Email sent when a requested booking slot is not available.",
+    icon: FileText, // Consider a different icon like CalendarX
+    defaultPlaceholders: defaultNoAvailabilityPlaceholders,
+    placeholderDetails: {
+        ...commonPlaceholderDetails,
+        '{{requestedDate}}': "The originally requested date for the booking.",
+        '{{requestedTime}}': "The originally requested time for the booking.",
+        '{{requestedPartySize}}': "The originally requested party size.",
+    }
+  },
+  {
+    id: WAITING_LIST_TEMPLATE_ID,
+    label: "Waiting List Confirmation",
+    description: "Email sent when a guest is added to the waiting list.",
+    icon: ListChecks,
+    defaultPlaceholders: defaultWaitingListPlaceholders,
+    placeholderDetails: {
+        ...commonPlaceholderDetails,
+        '{{requestedDate}}': "The date the guest wishes to dine.",
+        '{{requestedTime}}': "The approximate time the guest wishes to dine.",
+        '{{partySize}}': "The number of guests in their party.",
+        '{{estimatedWaitTime}}': "An estimated wait time (e.g., '30-45 minutes').",
+    }
+  }
+];
 
 export default function EmailTemplatePage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUserAuthenticated, setIsUserAuthenticated] = useState(false);
+  const [currentTemplateId, setCurrentTemplateId] = useState<string>(templateConfigurations[0].id);
+  const [currentPlaceholders, setCurrentPlaceholders] = useState<string[]>(templateConfigurations[0].defaultPlaceholders);
+  const [currentPlaceholderDetails, setCurrentPlaceholderDetails] = useState<Record<string, string>>(templateConfigurations[0].placeholderDetails);
 
   const form = useForm<EmailTemplateFormValues>({
     resolver: zodResolver(emailTemplateFormSchema),
@@ -55,19 +116,22 @@ export default function EmailTemplatePage() {
     },
   });
 
-  const fetchTemplate = useCallback(async () => {
+  const fetchTemplate = useCallback(async (templateIdToFetch: string) => {
     if (!auth.currentUser) {
-        console.log("[EmailTemplatePage] Fetch blocked: User not authenticated yet.");
-        setIsUserAuthenticated(false);
-        setIsLoading(false);
-        form.reset({subject: "Please log in to manage templates", body: "Log in to view and edit the booking confirmation email template."});
-        return;
+      console.log(`[EmailTemplatePage] Fetch blocked for ${templateIdToFetch}: User not authenticated yet.`);
+      setIsUserAuthenticated(false);
+      setIsLoading(false);
+      form.reset({ subject: "Please log in to manage templates", body: "Log in to view and edit email templates." });
+      return;
     }
     setIsUserAuthenticated(true);
     setIsLoading(true);
     try {
-      const template = await getEmailTemplate(BOOKING_CONFIRMATION_TEMPLATE_ID);
+      const template = await getEmailTemplate(templateIdToFetch);
       form.reset({ subject: template.subject, body: template.body });
+      const config = templateConfigurations.find(tc => tc.id === templateIdToFetch);
+      setCurrentPlaceholders(config?.defaultPlaceholders || []);
+      setCurrentPlaceholderDetails(config?.placeholderDetails || {});
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast({
@@ -84,7 +148,7 @@ export default function EmailTemplatePage() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        fetchTemplate();
+        fetchTemplate(currentTemplateId); // Fetch for the initially active tab
       } else {
         setIsUserAuthenticated(false);
         setIsLoading(false);
@@ -92,7 +156,20 @@ export default function EmailTemplatePage() {
       }
     });
     return () => unsubscribe();
-  }, [fetchTemplate]);
+  }, [fetchTemplate, currentTemplateId]); // Rerun if currentTemplateId changes (though fetchTemplate itself depends on it)
+
+  const handleTabChange = (newTemplateId: string) => {
+    setCurrentTemplateId(newTemplateId);
+    if (isUserAuthenticated) {
+      fetchTemplate(newTemplateId);
+    } else {
+      // If not authenticated, just update placeholder display based on tab
+      const config = templateConfigurations.find(tc => tc.id === newTemplateId);
+      setCurrentPlaceholders(config?.defaultPlaceholders || []);
+      setCurrentPlaceholderDetails(config?.placeholderDetails || {});
+      form.reset({subject: "Please log in", body: "Log in to manage email templates for this type."});
+    }
+  };
 
   async function onSubmit(values: EmailTemplateFormValues) {
     if (!isUserAuthenticated) {
@@ -101,10 +178,10 @@ export default function EmailTemplatePage() {
     }
     setIsSaving(true);
     try {
-      await saveEmailTemplate(BOOKING_CONFIRMATION_TEMPLATE_ID, values);
+      await saveEmailTemplate(currentTemplateId, values);
       toast({
         title: "Template Saved",
-        description: "The booking confirmation email template has been updated.",
+        description: `The "${templateConfigurations.find(t=>t.id === currentTemplateId)?.label}" email template has been updated.`,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -120,13 +197,16 @@ export default function EmailTemplatePage() {
 
   const handleSendTestEmail = () => {
     toast({
-      title: "Test Email",
+      title: `Test Email for "${templateConfigurations.find(t=>t.id === currentTemplateId)?.label}"`,
       description: "Send test email functionality is not yet implemented. Your template changes (if any) should be saved first.",
       duration: 5000,
     });
   };
+  
+  const ActiveIcon = templateConfigurations.find(t => t.id === currentTemplateId)?.icon || MailCheck;
 
-  if (isLoading && isUserAuthenticated) { // Only show full page loader if we expect data
+
+  if (isLoading && isUserAuthenticated) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -147,111 +227,129 @@ export default function EmailTemplatePage() {
     );
   }
 
-
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-headline text-foreground">Customize Email Templates</h1>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2 shadow-lg rounded-xl">
-          <CardHeader>
-            <CardTitle className="font-headline flex items-center">
-              <MailCheck className="mr-3 h-6 w-6 text-primary" />
-              Booking Confirmation Email
-            </CardTitle>
-            <CardDescription className="font-body">
-              Edit the content of the email sent to guests when their booking is confirmed.
-            </CardDescription>
-          </CardHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <CardContent className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="subject"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-body text-base">Email Subject</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="e.g., Your booking at {{restaurantName}} is confirmed!" className="font-body" disabled={isLoading || isSaving || !isUserAuthenticated} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="body"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-body text-base">Email Body</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          {...field}
-                          placeholder="Enter your email content here. Use placeholders like {{guestName}}."
-                          className="font-body min-h-[300px] lg:min-h-[400px] text-sm leading-relaxed"
-                          disabled={isLoading || isSaving || !isUserAuthenticated}
-                        />
-                      </FormControl>
-                       <FormDescription className="font-body text-xs">
-                        Supports basic Handlebars-like syntax for placeholders.
-                        For notes, use <code>{"{{#if notes}}Special Requests: {{notes}}{{/if}}"}</code> to conditionally show the section.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-              <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 pt-6">
-                <Button type="button" variant="outline" onClick={handleSendTestEmail} className="font-body w-full sm:w-auto btn-subtle-animate" disabled={isLoading || isSaving || !isUserAuthenticated}>
-                  <Send className="mr-2 h-4 w-4" /> Send Test Email
-                </Button>
-                <Button type="submit" className="font-body w-full sm:w-auto btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading || isSaving || !isUserAuthenticated}>
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" /> Save Template
-                    </>
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Form>
-        </Card>
+      <Tabs value={currentTemplateId} onValueChange={handleTabChange} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto sm:h-10">
+          {templateConfigurations.map(template => (
+            <TabsTrigger key={template.id} value={template.id} className="font-body py-2 sm:py-1.5">
+              <template.icon className="mr-2 h-4 w-4 hidden sm:inline-block" />
+              {template.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        <Card className="lg:col-span-1 shadow-lg rounded-xl h-fit">
-          <CardHeader>
-            <CardTitle className="font-headline flex items-center">
-              <ListChecks className="mr-3 h-6 w-6 text-primary" />
-              Available Placeholders
-            </CardTitle>
-            <CardDescription className="font-body">
-              Use these placeholders in your subject and body. They will be replaced with actual booking data.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {defaultBookingConfirmationTemplatePlaceholders.map((placeholder) => (
-                <li key={placeholder}>
-                  <p className="font-mono text-sm text-accent bg-accent/10 px-2 py-1 rounded-md inline-block">{placeholder}</p>
-                  <p className="text-xs text-muted-foreground font-body mt-1">{placeholderDescriptions[placeholder] || "No description available."}</p>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <div className="flex items-start">
-                    <Info className="h-5 w-5 text-blue-600 mr-2 shrink-0 mt-0.5" />
-                    <p className="text-xs font-body text-blue-700">
-                        The actual replacement of these placeholders and email sending will occur when the booking confirmation process is triggered (e.g., from the booking form or admin panel).
-                    </p>
-                </div>
+        {templateConfigurations.map(template => (
+          <TabsContent key={template.id} value={template.id}>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <Card className="lg:col-span-2 shadow-lg rounded-xl">
+                <CardHeader>
+                  <CardTitle className="font-headline flex items-center">
+                    <ActiveIcon className="mr-3 h-6 w-6 text-primary" />
+                    Edit: {template.label}
+                  </CardTitle>
+                  <CardDescription className="font-body">
+                    {template.description}
+                  </CardDescription>
+                </CardHeader>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)}>
+                    <CardContent className="space-y-6">
+                      <FormField
+                        control={form.control}
+                        name="subject"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="font-body text-base">Email Subject</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Enter email subject" className="font-body" disabled={isLoading || isSaving || !isUserAuthenticated} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="body"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="font-body text-base">Email Body</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                placeholder="Enter your email content here. Use placeholders like {{guestName}}."
+                                className="font-body min-h-[300px] lg:min-h-[350px] text-sm leading-relaxed"
+                                disabled={isLoading || isSaving || !isUserAuthenticated}
+                              />
+                            </FormControl>
+                            <FormDescription className="font-body text-xs">
+                              Supports basic Handlebars-like syntax for placeholders.
+                              For notes/optional fields, use <code>{"{{#if fieldName}}Content with {{fieldName}}{{/if}}"}</code> for conditional display.
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                    <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 pt-6">
+                      <Button type="button" variant="outline" onClick={handleSendTestEmail} className="font-body w-full sm:w-auto btn-subtle-animate" disabled={isLoading || isSaving || !isUserAuthenticated}>
+                        <Send className="mr-2 h-4 w-4" /> Send Test Email
+                      </Button>
+                      <Button type="submit" className="font-body w-full sm:w-auto btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading || isSaving || !isUserAuthenticated}>
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="mr-2 h-4 w-4" /> Save Template
+                          </>
+                        )}
+                      </Button>
+                    </CardFooter>
+                  </form>
+                </Form>
+              </Card>
+
+              <Card className="lg:col-span-1 shadow-lg rounded-xl h-fit">
+                <CardHeader>
+                  <CardTitle className="font-headline flex items-center">
+                    <ListChecks className="mr-3 h-6 w-6 text-primary" />
+                    Available Placeholders
+                  </CardTitle>
+                  <CardDescription className="font-body">
+                    For the "{template.label}" template.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {currentPlaceholders.length > 0 ? (
+                    <ul className="space-y-3">
+                      {currentPlaceholders.map((placeholder) => (
+                        <li key={placeholder}>
+                          <p className="font-mono text-sm text-accent bg-accent/10 px-2 py-1 rounded-md inline-block">{placeholder}</p>
+                          <p className="text-xs text-muted-foreground font-body mt-1">{currentPlaceholderDetails[placeholder] || "No description available."}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="font-body text-muted-foreground">No specific placeholders for this template type, or they are still loading.</p>
+                  )}
+                  <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="flex items-start">
+                          <Info className="h-5 w-5 text-blue-600 mr-2 shrink-0 mt-0.5" />
+                          <p className="text-xs font-body text-blue-700">
+                              Actual email sending functionality and placeholder replacement will be implemented in a later step.
+                          </p>
+                      </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }
