@@ -3,20 +3,20 @@
 /**
  * @fileOverview A Genkit flow for sending transactional emails via Brevo API.
  *
- * - sendEmailFlow - A function that handles sending an email.
+ * - sendEmail - A function that handles sending an email.
  * - SendEmailInput - The input type for the sendEmailFlow.
  * - SendEmailOutput - The return type for the sendEmailFlow.
  */
 
-import { ai } from '@/ai/genkit'; // Assuming your genkit.ts is here
-import { z } from 'genkit'; // Use Genkit's Zod for schema definition
+import { ai } from '@/ai/genkit'; 
+import { z } from 'genkit'; 
 import type { CombinedSettings } from '@/lib/types';
-import { getRestaurantSettings } from '@/services/settingsService'; // To get restaurant name
+import { getRestaurantSettings } from '@/services/settingsService'; 
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
-const DEFAULT_SENDER_EMAIL = 'noreply@yourrestaurant.com'; // IMPORTANT: Replace with your verified Brevo sender email
+const DEFAULT_SENDER_EMAIL = 'noreply@yourrestaurant.com'; 
 
-export const SendEmailInputSchema = z.object({
+const SendEmailInputSchema = z.object({
   to: z.string().email().describe('The recipient\'s email address.'),
   subject: z.string().describe('The subject line of the email.'),
   htmlContent: z.string().describe('The HTML content of the email body.'),
@@ -25,7 +25,7 @@ export const SendEmailInputSchema = z.object({
 });
 export type SendEmailInput = z.infer<typeof SendEmailInputSchema>;
 
-export const SendEmailOutputSchema = z.object({
+const SendEmailOutputSchema = z.object({
   success: z.boolean().describe('Whether the email was sent successfully.'),
   messageId: z.string().optional().describe('The message ID from Brevo if successful.'),
   error: z.string().optional().describe('Error message if sending failed.'),
@@ -37,7 +37,7 @@ async function getDynamicSenderInfo(): Promise<{name: string, email: string}> {
     try {
         const settings: CombinedSettings | null = await getRestaurantSettings();
         const restaurantName = settings?.restaurantName || "Table Maestro";
-        // In a real app, you might fetch a verified sender email from settings too
+        
         return { name: restaurantName, email: DEFAULT_SENDER_EMAIL };
     } catch (error) {
         console.warn("[sendEmailFlow] Could not fetch restaurant settings for sender name, using default. Error:", error);
@@ -46,7 +46,7 @@ async function getDynamicSenderInfo(): Promise<{name: string, email: string}> {
 }
 
 
-export const sendEmailFlow = ai.defineFlow(
+const sendEmailFlow = ai.defineFlow(
   {
     name: 'sendEmailFlow',
     inputSchema: SendEmailInputSchema,
@@ -101,7 +101,8 @@ export const sendEmailFlow = ai.defineFlow(
   }
 );
 
-// Wrapper function as per guidelines
+
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailOutput> {
   return sendEmailFlow(input);
 }
+
