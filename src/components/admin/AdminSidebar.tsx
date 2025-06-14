@@ -15,6 +15,7 @@ import {
   SidebarGroupLabel,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar, // Import useSidebar
 } from "@/components/ui/sidebar";
 import Logo from "@/components/shared/Logo";
 import {
@@ -25,13 +26,13 @@ import {
   LogOut,
   UserCircle,
   LineChart,
-  Table as TableIcon, // Added TableIcon
+  Table as TableIcon,
 } from "lucide-react";
 
 const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/bookings", label: "Bookings", icon: BookOpenText },
-  { href: "/admin/tables", label: "Tables", icon: TableIcon }, // New Tables item
+  { href: "/admin/tables", label: "Tables", icon: TableIcon },
   { href: "/admin/data", label: "Data", icon: LineChart },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/settings", label: "Settings", icon: Settings },
@@ -39,12 +40,16 @@ const menuItems = [
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const { isMobile } = useSidebar(); // Get isMobile state
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r">
       <SidebarHeader className="flex items-center justify-between p-4">
         <Logo size="md" colorClassName="text-sidebar-foreground" showText={true} href="/admin/dashboard" />
-        <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent" />
+        {/* Hide internal trigger on mobile if a global mobile trigger exists */}
+        {!isMobile && (
+          <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent" />
+        )}
       </SidebarHeader>
 
       <SidebarContent className="flex-grow p-2">
