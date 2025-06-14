@@ -14,7 +14,7 @@ import type { CombinedSettings } from '@/lib/types';
 import { getRestaurantSettings } from '@/services/settingsService'; 
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
-const DEFAULT_SENDER_EMAIL = 'noreply@yourrestaurant.com'; 
+const DEFAULT_SENDER_EMAIL = 'info@posso.uk'; 
 
 const SendEmailInputSchema = z.object({
   to: z.string().email().describe('The recipient\'s email address.'),
