@@ -15,7 +15,7 @@ import {
   SidebarGroupLabel,
   SidebarSeparator,
   SidebarTrigger,
-  useSidebar, // Import useSidebar
+  useSidebar, 
 } from "@/components/ui/sidebar";
 import Logo from "@/components/shared/Logo";
 import {
@@ -27,6 +27,7 @@ import {
   UserCircle,
   LineChart,
   Table as TableIcon,
+  FileText, // Added icon
 } from "lucide-react";
 
 const menuItems = [
@@ -35,18 +36,19 @@ const menuItems = [
   { href: "/admin/tables", label: "Tables", icon: TableIcon },
   { href: "/admin/data", label: "Data", icon: LineChart },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
+  { href: "/admin/templates/email", label: "Email Templates", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { isMobile } = useSidebar(); // Get isMobile state
+  const { isMobile } = useSidebar(); 
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r">
       <SidebarHeader className="flex items-center justify-between p-4">
         <Logo size="md" colorClassName="text-sidebar-foreground" showText={true} href="/admin/dashboard" />
-        {/* Hide internal trigger on mobile if a global mobile trigger exists */}
+        
         {!isMobile && (
           <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent" />
         )}

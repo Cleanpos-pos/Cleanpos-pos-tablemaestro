@@ -69,3 +69,20 @@ export interface Table {
 
 export type TableInput = Omit<Table, 'id' | 'createdAt' | 'updatedAt'>;
 export type TableUpdateData = Partial<TableInput>;
+
+export interface ActivityItem {
+  id: string;
+  message: string;
+  time: string;
+  type: 'booking' | 'cancellation' | 'update' | 'system';
+}
+
+export interface EmailTemplate {
+  id: string; 
+  subject: string;
+  body: string; 
+  placeholders?: string[]; 
+  updatedAt?: string; 
+}
+
+export type EmailTemplateInput = Pick<EmailTemplate, 'subject' | 'body'>;
