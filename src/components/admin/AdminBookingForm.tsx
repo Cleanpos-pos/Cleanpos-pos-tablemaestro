@@ -20,13 +20,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, User, Mail, Phone, Clock, Users, StickyNote, Save, Loader2, CheckCircle } from "lucide-react";
+import { CalendarIcon, User, Mail, Phone, Clock, Users, StickyNote, Save, Loader2, CheckCircle, SquareStack } from "lucide-react";
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import type { Booking, BookingInput } from "@/lib/types";
+import type { Booking, BookingInput, Table } from "@/lib/types";
 import { addBookingToFirestore, updateBookingInFirestore } from "@/services/bookingService";
-import { updateTable } from "@/services/tableService"; // Import updateTable
+import { updateTable as updateTableService, getTables } from "@/services/tableService";
 import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { auth } from "@/config/firebase";
 
 interface AdminBookingFormProps {
   existingBooking?: Booking;
@@ -62,6 +64,8 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
   const { toast } = useToast();
   const router = useRouter();
   const isEditMode = !!existingBooking;
+  const [tables, setTables] = useState<Table[]>([]);
+  const [isLoadingTables, setIsLoadingTables] = useState(true);
 
   const defaultValues: Partial<AdminBookingFormValues> = {
     guestName: existingBooking?.guestName || "",
@@ -79,6 +83,32 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     resolver: zodResolver(adminBookingFormSchema),
     defaultValues,
   });
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        setIsLoadingTables(true);
+        try {
+          const fetchedTables = await getTables();
+          setTables(fetchedTables);
+        } catch (error) {
+          console.error("Failed to fetch tables for dropdown:", error);
+          toast({
+            title: "Error Loading Tables",
+            description: "Could not load tables for selection. Manual ID entry might be needed if issue persists.",
+            variant: "destructive",
+          });
+          setTables([]);
+        } finally {
+          setIsLoadingTables(false);
+        }
+      } else {
+        setTables([]);
+        setIsLoadingTables(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [toast]);
   
 
   async function onSubmit(values: AdminBookingFormValues) {
@@ -91,9 +121,10 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
       return;
     }
 
-    const bookingDataForFirestore = {
+    const bookingDataForFirestore: BookingInput = {
       ...values,
-      date: format(values.date, "yyyy-MM-dd"), 
+      date: format(values.date, "yyyy-MM-dd"),
+      tableId: values.tableId || undefined, // Ensure empty string becomes undefined for Firestore
     };
 
     const oldTableId = existingBooking?.tableId;
@@ -102,6 +133,8 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     const newStatus = bookingDataForFirestore.status;
 
     try {
+      let bookingIdToWatch: string | undefined = isEditMode ? existingBooking!.id : undefined;
+
       if (isEditMode && existingBooking) {
         await updateBookingInFirestore(existingBooking.id, bookingDataForFirestore);
         toast({
@@ -110,7 +143,8 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
           action: <CheckCircle className="text-green-500" />,
         });
       } else {
-        await addBookingToFirestore(bookingDataForFirestore as BookingInput); 
+        const newBookingId = await addBookingToFirestore(bookingDataForFirestore);
+        bookingIdToWatch = newBookingId;
         toast({
           title: "Booking Created",
           description: `New reservation for ${values.guestName} has been successfully created.`,
@@ -120,24 +154,48 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
 
       // Automated table status updates
       if (newStatus === 'seated' && newTableId) {
-        console.log(`[AdminBookingForm] Booking for ${values.guestName} SEATED at table ${newTableId}. Setting table to 'occupied'.`);
-        await updateTable(newTableId, { status: 'occupied' });
+        try {
+          console.log(`[AdminBookingForm] Booking for ${values.guestName} SEATED at table ${newTableId}. Setting table to 'occupied'.`);
+          await updateTableService(newTableId, { status: 'occupied' });
+        } catch (tableError) {
+          console.error(`[AdminBookingForm] Failed to set table ${newTableId} to occupied:`, tableError);
+          toast({
+            title: "Table Update Failed",
+            description: `Booking saved, but could not mark table ${newTableId} as occupied. Please check table ID and status manually. Error: ${tableError instanceof Error ? tableError.message : String(tableError)}`,
+            variant: "destructive",
+          });
+        }
       }
 
-      // If the booking was previously seated at a table, and now it's not, or it moved tables
       if (oldStatus === 'seated' && oldTableId) {
         if (newStatus !== 'seated' || newTableId !== oldTableId) {
-          console.log(`[AdminBookingForm] Booking for ${values.guestName} no longer seated at ${oldTableId} (new status: ${newStatus}, new table: ${newTableId}). Setting old table ${oldTableId} to 'available'.`);
-          await updateTable(oldTableId, { status: 'available' });
+          try {
+            console.log(`[AdminBookingForm] Booking for ${values.guestName} no longer seated at ${oldTableId} (new status: ${newStatus}, new table: ${newTableId}). Setting old table ${oldTableId} to 'available'.`);
+            await updateTableService(oldTableId, { status: 'available' });
+          } catch (tableError) {
+             console.error(`[AdminBookingForm] Failed to set table ${oldTableId} to available:`, tableError);
+             toast({
+                title: "Old Table Update Failed",
+                description: `Booking saved, but could not mark previous table ${oldTableId} as available. Error: ${tableError instanceof Error ? tableError.message : String(tableError)}`,
+                variant: "destructive",
+            });
+          }
         }
       }
       
-      // If the booking status is 'seated' and it moved from an old table to a new table
       if (newStatus === 'seated' && newTableId && oldTableId && oldTableId !== newTableId && oldStatus === 'seated') {
-          console.log(`[AdminBookingForm] Booking for ${values.guestName} MOVED from ${oldTableId} to ${newTableId} while 'seated'. Setting old table ${oldTableId} to 'available'.`);
-          await updateTable(oldTableId, { status: 'available' });
+          try {
+            console.log(`[AdminBookingForm] Booking for ${values.guestName} MOVED from ${oldTableId} to ${newTableId} while 'seated'. Setting old table ${oldTableId} to 'available'.`);
+            await updateTableService(oldTableId, { status: 'available' });
+          } catch (tableError) {
+            console.error(`[AdminBookingForm] Failed to set old table ${oldTableId} to available after move:`, tableError);
+            toast({
+                title: "Old Table Update Failed (Move)",
+                description: `Booking saved, new table ${newTableId} occupied. Could not mark previous table ${oldTableId} as available. Error: ${tableError instanceof Error ? tableError.message : String(tableError)}`,
+                variant: "destructive",
+            });
+          }
       }
-
 
       router.push("/admin/bookings"); 
       router.refresh(); 
@@ -285,11 +343,41 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
             name="tableId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-body flex items-center">Table ID (Optional)</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g. T5, P2 (Firestore Document ID)" {...field} className="font-body" />
-                </FormControl>
-                <FormDescription className="font-body text-xs">Assign a specific table if known. Use the table's Firestore ID.</FormDescription>
+                <FormLabel className="font-body flex items-center"><SquareStack className="mr-2 h-4 w-4 text-muted-foreground"/>Assign Table (Optional)</FormLabel>
+                <Select 
+                  onValueChange={field.onChange} 
+                  value={field.value || ""}
+                  disabled={isLoadingTables}
+                >
+                  <FormControl>
+                    <SelectTrigger className="font-body">
+                      <SelectValue placeholder={isLoadingTables ? "Loading tables..." : "Select a table"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {isLoadingTables ? (
+                      <div className="flex items-center justify-center p-2">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading...
+                      </div>
+                    ) : tables.length === 0 ? (
+                      <SelectItem value="" disabled className="font-body">
+                        No tables available or configured.
+                      </SelectItem>
+                    ) : (
+                      <>
+                        <SelectItem value="" className="font-body">
+                          None (Unassign Table)
+                        </SelectItem>
+                        {tables.map((table) => (
+                          <SelectItem key={table.id} value={table.id} className="font-body">
+                            {table.name} (Capacity: {table.capacity}, Status: {table.status})
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+                <FormDescription className="font-body text-xs">Select a table to assign to this booking.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -313,7 +401,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
               </FormItem>
             )}
           />
-        <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting}>
+        <Button type="submit" className="w-full md:w-auto font-body text-lg py-3 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isLoadingTables}>
           {form.formState.isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Saving...
@@ -328,3 +416,4 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
     </Form>
   );
 }
+
