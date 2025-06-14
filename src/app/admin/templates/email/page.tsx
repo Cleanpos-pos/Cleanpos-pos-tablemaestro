@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EmailTemplateInput } from "@/lib/types";
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { 
   getEmailTemplate, 
   saveEmailTemplate, 
@@ -33,6 +33,19 @@ import {
   defaultWaitingListPlaceholders
 } from "@/services/templateService";
 import { auth } from "@/config/firebase";
+import { sendTestEmailAction } from "@/app/actions/emailActions"; // Import the server action
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
 
 const emailTemplateFormSchema = z.object({
   subject: z.string().min(5, "Subject must be at least 5 characters.").max(200, "Subject too long."),
@@ -74,7 +87,7 @@ const templateConfigurations: TemplateConfig[] = [
     id: NO_AVAILABILITY_TEMPLATE_ID,
     label: "No Availability",
     description: "Email sent when a requested booking slot is not available.",
-    icon: FileText, // Consider a different icon like CalendarX
+    icon: FileText,
     defaultPlaceholders: defaultNoAvailabilityPlaceholders,
     placeholderDetails: {
         ...commonPlaceholderDetails,
@@ -103,10 +116,14 @@ export default function EmailTemplatePage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUserAuthenticated, setIsUserAuthenticated] = useState(false);
   const [currentTemplateId, setCurrentTemplateId] = useState<string>(templateConfigurations[0].id);
   const [currentPlaceholders, setCurrentPlaceholders] = useState<string[]>(templateConfigurations[0].defaultPlaceholders);
   const [currentPlaceholderDetails, setCurrentPlaceholderDetails] = useState<Record<string, string>>(templateConfigurations[0].placeholderDetails);
+  const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [isTestEmailDialogOpen, setIsTestEmailDialogOpen] = useState(false);
+
 
   const form = useForm<EmailTemplateFormValues>({
     resolver: zodResolver(emailTemplateFormSchema),
@@ -148,7 +165,8 @@ export default function EmailTemplatePage() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        fetchTemplate(currentTemplateId); // Fetch for the initially active tab
+        setTestEmailAddress(user.email || ""); // Pre-fill test email with user's email
+        fetchTemplate(currentTemplateId); 
       } else {
         setIsUserAuthenticated(false);
         setIsLoading(false);
@@ -156,14 +174,13 @@ export default function EmailTemplatePage() {
       }
     });
     return () => unsubscribe();
-  }, [fetchTemplate, currentTemplateId]); // Rerun if currentTemplateId changes (though fetchTemplate itself depends on it)
+  }, [fetchTemplate, currentTemplateId]); 
 
   const handleTabChange = (newTemplateId: string) => {
     setCurrentTemplateId(newTemplateId);
     if (isUserAuthenticated) {
       fetchTemplate(newTemplateId);
     } else {
-      // If not authenticated, just update placeholder display based on tab
       const config = templateConfigurations.find(tc => tc.id === newTemplateId);
       setCurrentPlaceholders(config?.defaultPlaceholders || []);
       setCurrentPlaceholderDetails(config?.placeholderDetails || {});
@@ -195,12 +212,59 @@ export default function EmailTemplatePage() {
     }
   }
 
-  const handleSendTestEmail = () => {
+  const handleActualSendTestEmail = async () => {
+    if (!isUserAuthenticated) {
+      toast({ title: "Not Authenticated", description: "Please log in.", variant: "destructive" });
+      return;
+    }
+    if (!testEmailAddress) {
+      toast({ title: "Recipient Missing", description: "Please enter an email address to send the test to.", variant: "destructive" });
+      return;
+    }
+    if (!currentTemplateId) {
+        toast({ title: "Template Error", description: "No template selected to send.", variant: "destructive" });
+        return;
+    }
+
+    setIsSendingTest(true);
+    setIsTestEmailDialogOpen(false); // Close dialog before sending
+
+    // Save current form state before sending test, in case of unsaved changes
+    // This is optional, or you could prompt the user to save first.
+    // For simplicity, we'll send with the current *loaded* or *saved* template content.
+    // If you want to send with *unsaved* form content, you'd pass form.getValues()
+    // to the action, which would require the action to accept subject/body directly.
+    // For now, it fetches the saved template.
+
     toast({
-      title: `Test Email for "${templateConfigurations.find(t=>t.id === currentTemplateId)?.label}"`,
-      description: "Send test email functionality is not yet implemented. Your template changes (if any) should be saved first.",
-      duration: 5000,
+      title: `Sending Test Email...`,
+      description: `For template: "${templateConfigurations.find(t => t.id === currentTemplateId)?.label}" to ${testEmailAddress}. Please wait.`,
     });
+
+    try {
+      const result = await sendTestEmailAction(currentTemplateId, testEmailAddress);
+      if (result.success) {
+        toast({
+          title: "Test Email Sent!",
+          description: result.message,
+        });
+      } else {
+        toast({
+          title: "Test Email Failed",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown client-side error occurred.";
+      toast({
+        title: "Test Email Error",
+        description: `Could not send test email: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingTest(false);
+    }
   };
   
   const ActiveIcon = templateConfigurations.find(t => t.id === currentTemplateId)?.icon || MailCheck;
@@ -251,7 +315,7 @@ export default function EmailTemplatePage() {
                     Edit: {template.label}
                   </CardTitle>
                   <CardDescription className="font-body">
-                    {template.description}
+                    {template.description} Ensure your Brevo API key is in `.env` and sender email is configured in Brevo and in `sendEmailFlow.ts`.
                   </CardDescription>
                 </CardHeader>
                 <Form {...form}>
@@ -285,8 +349,8 @@ export default function EmailTemplatePage() {
                               />
                             </FormControl>
                             <FormDescription className="font-body text-xs">
-                              Supports basic Handlebars-like syntax for placeholders.
-                              For notes/optional fields, use <code>{"{{#if fieldName}}Content with {{fieldName}}{{/if}}"}</code> for conditional display.
+                              Supports basic placeholder syntax.
+                              Use <code>{"{{#if fieldName}}Content with {{fieldName}}{{/if}}"}</code> for conditional display of optional fields.
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
@@ -294,10 +358,37 @@ export default function EmailTemplatePage() {
                       />
                     </CardContent>
                     <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 pt-6">
-                      <Button type="button" variant="outline" onClick={handleSendTestEmail} className="font-body w-full sm:w-auto btn-subtle-animate" disabled={isLoading || isSaving || !isUserAuthenticated}>
-                        <Send className="mr-2 h-4 w-4" /> Send Test Email
-                      </Button>
-                      <Button type="submit" className="font-body w-full sm:w-auto btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading || isSaving || !isUserAuthenticated}>
+                       <AlertDialog open={isTestEmailDialogOpen} onOpenChange={setIsTestEmailDialogOpen}>
+                        <AlertDialogTrigger asChild>
+                           <Button type="button" variant="outline" className="font-body w-full sm:w-auto btn-subtle-animate" disabled={isLoading || isSaving || isSendingTest || !isUserAuthenticated}>
+                             <Send className="mr-2 h-4 w-4" /> Send Test Email
+                           </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="font-headline">Send Test Email</AlertDialogTitle>
+                            <AlertDialogDescription className="font-body">
+                              Enter the email address to send a test of the "{templateConfigurations.find(t=>t.id === currentTemplateId)?.label}" template to.
+                              The template content used will be the **last saved version**.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <Input 
+                            type="email"
+                            placeholder="recipient@example.com"
+                            value={testEmailAddress}
+                            onChange={(e) => setTestEmailAddress(e.target.value)}
+                            className="font-body mt-2"
+                          />
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className="font-body">Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleActualSendTestEmail} className="font-body" disabled={isSendingTest}>
+                              {isSendingTest ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : "Send Test"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+
+                      <Button type="submit" className="font-body w-full sm:w-auto btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isLoading || isSaving || isSendingTest || !isUserAuthenticated}>
                         {isSaving ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -336,11 +427,13 @@ export default function EmailTemplatePage() {
                   ) : (
                     <p className="font-body text-muted-foreground">No specific placeholders for this template type, or they are still loading.</p>
                   )}
-                  <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                   <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-md">
                       <div className="flex items-start">
                           <Info className="h-5 w-5 text-blue-600 mr-2 shrink-0 mt-0.5" />
                           <p className="text-xs font-body text-blue-700">
-                              Actual email sending functionality and placeholder replacement will be implemented in a later step.
+                              The "Send Test Email" feature uses the **last saved version** of the template.
+                              Ensure your Brevo API key is correctly set in the `.env` file (requires server restart after adding/changing).
+                              The sender email is currently hardcoded in `sendEmailFlow.ts` as `{DEFAULT_SENDER_EMAIL}`; ensure this is a verified sender in your Brevo account.
                           </p>
                       </div>
                   </div>
@@ -353,3 +446,4 @@ export default function EmailTemplatePage() {
     </div>
   );
 }
+
