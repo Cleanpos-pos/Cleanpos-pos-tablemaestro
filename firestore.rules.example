@@ -4,47 +4,56 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Restaurant Configuration (Settings, Schedule, Email Templates, Tables)
-    // This rule allows an authenticated user to read and write ALL documents
-    // and subcollections (e.g., emailTemplates, tables) under their own
-    // specific restaurantConfig path, identified by their UID.
+    // Default: Deny all reads and writes by default.
+    // Specific allow rules below will override this for their matched paths.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Rules for 'restaurantConfig' collection
+    // This path matches individual documents directly under 'restaurantConfig',
+    // such as /restaurantConfig/mainRestaurant or /restaurantConfig/USER_ID
+    match /restaurantConfig/{configId} {
+      // Allow public GET (read of a single document) for 'mainRestaurant' config.
+      // This is for the public homepage or public booking page to fetch general restaurant info.
+      allow get: if configId == "mainRestaurant";
+      // Deny list, create, update, delete for 'mainRestaurant' by the public.
+      allow list, create, update, delete: if false;
+
+      // Allow an authenticated user to read and write their OWN top-level config document.
+      // This document (e.g., /restaurantConfig/USER_ID) typically stores overall settings, schedule.
+      // This rule does NOT cover subcollections within this document; those are handled by the rule below.
+      allow read, write: if request.auth != null && request.auth.uid == configId;
+    }
+
+    // Rule for all user-specific data *within* their restaurantConfig directory (i.e., subcollections).
+    // This covers subcollections like 'tables', 'emailTemplates', etc., under a specific user's config.
+    // e.g., /restaurantConfig/{userId}/tables/{tableId}
+    // e.g., /restaurantConfig/{userId}/emailTemplates/{templateId}
     match /restaurantConfig/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Public Restaurant Configuration (for homepage, public booking page)
-    // Assumes your PUBLIC_RESTAURANT_ID constant points to "mainRestaurant" or similar.
-    // This allows anyone to read the settings for the main public-facing restaurant.
-    // Writes to this public configuration should be restricted, possibly to an admin role
-    // or handled through a backend function with specific checks. For simplicity,
-    // this example denies direct public writes.
-    match /restaurantConfig/mainRestaurant { // Replace "mainRestaurant" if your PUBLIC_RESTAURANT_ID is different
-      allow get: if true; // Allow public read of this specific document
-      allow list, create, update, delete: if false; // Deny public writes/listing to this path
-    }
 
-    // Bookings Collection
-    // The current application structure stores bookings in a root 'bookings' collection.
-    // For a multi-tenant application where each restaurant owner (admin) should only
-    // manage their own bookings, you would typically:
-    // 1. Add an 'ownerUID' (or 'restaurantId') field to each booking document.
-    // 2. Use rules like: allow read, write: if request.auth.uid == resource.data.ownerUID;
-    //
-    // The rule below is a very basic one for authenticated users.
-    // It does NOT provide per-restaurant isolation for bookings if multiple admins
-    // use the same Firebase project with a shared 'bookings' collection.
-    // You will need to refine this based on your multi-tenancy strategy.
+    // Bookings collection (Root collection)
+    // IMPORTANT: This rule assumes each booking document has an 'ownerUID' field
+    // storing the UID of the restaurant owner (the authenticated user who created it).
+    // Your application code (e.g., bookingService.ts) MUST add this 'ownerUID' field
+    // to new booking documents for these rules to work correctly.
     match /bookings/{bookingId} {
-      // Allows any authenticated user to create, read, update, delete bookings.
-      // This is suitable if all admins share all bookings, or if you implement
-      // more granular checks in your backend code or Cloud Functions.
-      allow read, write: if request.auth != null;
+      // Allow a user to create a booking if they are authenticated and
+      // the 'ownerUID' in the new booking data matches their own UID.
+      allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
 
-      // Example of a more restrictive rule IF you add an 'ownerUID' to bookings:
-      // allow read, write: if request.auth != null && request.auth.uid == resource.data.ownerUID;
-      // allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
+      // Allow a user to read, update, or delete a booking if they are authenticated
+      // and their UID matches the 'ownerUID' stored on the booking document.
+      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.ownerUID;
+
+      // Note: If there's a need for guests (unauthenticated or differently authenticated users)
+      // to view their own bookings, more complex rules and data structures would be required.
+      // For now, these rules focus on owner-based management.
     }
 
-    // Add other rules for other collections as needed.
+    // Add rules for other root collections as your application grows.
   }
 }
