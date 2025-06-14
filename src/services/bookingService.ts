@@ -87,7 +87,14 @@ export const deleteBookingFromFirestore = async (bookingId: string): Promise<voi
   }
 };
 
-// New function to get active bookings for a specific table
+// Firestore Composite Index Required for this query:
+// Collection ID: bookings
+// Fields:
+// 1. status ASC
+// 2. tableId ASC
+// 3. date ASC
+// 4. time ASC
+// You can create this index via the Firebase Console using the link provided in the error message.
 export const getActiveBookingsForTable = async (tableId: string): Promise<Booking[]> => {
   try {
     const q = query(
