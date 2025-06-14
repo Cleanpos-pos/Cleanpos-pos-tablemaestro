@@ -1,6 +1,4 @@
 
-'use server';
-
 import { genkit } from 'genkit';
 import { googleAI } from '@genkit-ai/googleai';
 // import { firebase } from 'genkit/firebase'; // Uncomment if you plan to use Firebase for trace/flow state storage
@@ -18,3 +16,4 @@ export const ai = genkit({
   // enableTracing: true, // Recommended for development to see traces
   // logUsage: true,      // Recommended for development to see usage logs
 });
+
