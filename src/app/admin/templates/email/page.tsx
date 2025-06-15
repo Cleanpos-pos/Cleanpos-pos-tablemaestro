@@ -168,6 +168,7 @@ export default function EmailTemplatePage() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
         setTestEmailAddress(user.email || ""); 
+        setIsUserAuthenticated(true); // Set state here
         fetchTemplate(currentTemplateId); 
       } else {
         setIsUserAuthenticated(false);
@@ -180,7 +181,7 @@ export default function EmailTemplatePage() {
 
   const handleTabChange = (newTemplateId: string) => {
     setCurrentTemplateId(newTemplateId);
-    if (isUserAuthenticated) {
+    if (isUserAuthenticated) { // Check internal state
       fetchTemplate(newTemplateId);
     } else {
       const config = templateConfigurations.find(tc => tc.id === newTemplateId);
@@ -221,8 +222,9 @@ export default function EmailTemplatePage() {
   }
 
   const handleActualSendTestEmail = async () => {
-    if (!isUserAuthenticated) {
-      toast({ title: "Not Authenticated", description: "Please log in.", variant: "destructive" });
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.uid) { // Check auth.currentUser directly
+      toast({ title: "Not Authenticated", description: "Please log in to send a test email.", variant: "destructive" });
       return;
     }
     if (!testEmailAddress) {
@@ -243,7 +245,8 @@ export default function EmailTemplatePage() {
     });
 
     try {
-      const result = await sendTestEmailAction(currentTemplateId, testEmailAddress);
+      // Pass the authenticated user's UID to the server action
+      const result = await sendTestEmailAction(currentTemplateId, testEmailAddress, currentUser.uid);
       if (result.success) {
         toast({
           title: "Test Email Sent!",
@@ -289,14 +292,11 @@ export default function EmailTemplatePage() {
       const newValue = currentValue.substring(0, start) + placeholder + currentValue.substring(end);
       form.setValue(fieldName, newValue, { shouldDirty: true, shouldValidate: true });
 
-      // Refocus and set cursor position
       fieldElement.focus();
-      // Use setTimeout to ensure the DOM has updated after setValue
       setTimeout(() => {
         fieldElement.setSelectionRange(start + placeholder.length, start + placeholder.length);
       }, 0);
     } else {
-      // Fallback if selectionStart/End is not available (should not happen for input/textarea)
       const newValue = currentValue + placeholder;
       form.setValue(fieldName, newValue, { shouldDirty: true, shouldValidate: true });
       fieldElement.focus();
@@ -411,7 +411,7 @@ export default function EmailTemplatePage() {
                             <AlertDialogTitle className="font-headline">Send Test Email</AlertDialogTitle>
                             <AlertDialogDescription className="font-body">
                               Enter the email address to send a test of the "{templateConfigurations.find(t=>t.id === currentTemplateId)?.label}" template to.
-                              The template content used will be the **last saved version**.
+                              The template content used will be the **current content in the form fields above (not necessarily the last saved version)**.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <Input 
@@ -486,9 +486,9 @@ export default function EmailTemplatePage() {
                       <div className="flex items-start">
                           <Info className="h-5 w-5 text-blue-600 mr-2 shrink-0 mt-0.5" />
                           <p className="text-xs font-body text-blue-700">
-                              The "Send Test Email" feature uses the **last saved version** of the template.
+                              The "Send Test Email" feature uses the **current content in the form fields** for the email body and subject.
                               Ensure your `GEMINI_API_KEY` (for Genkit Google AI plugin) and `BREVO_API_KEY` (for Brevo email service) are correctly set in the `.env` file.
-                              The sender email is currently configured in `sendEmailFlow.ts` as `info@posso.uk`; ensure this is a verified sender in your Brevo account.
+                              The sender email is currently configured in `sendEmailFlow.ts` (defaults to `info@posso.uk`); ensure this is a verified sender in your Brevo account.
                               A server restart might be required after adding/changing API keys in `.env`.
                           </p>
                       </div>
@@ -502,3 +502,4 @@ export default function EmailTemplatePage() {
     </div>
   );
 }
+

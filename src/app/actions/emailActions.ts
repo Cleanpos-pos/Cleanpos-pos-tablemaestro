@@ -10,7 +10,7 @@ import {
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
 import type { CombinedSettings } from '@/lib/types';
-import { getRestaurantSettings } from '@/services/settingsService'; // Changed to getRestaurantSettings
+import { getSettingsById } from '@/services/settingsService'; // Changed to getSettingsById
 import { format } from 'date-fns';
 
 interface SendTestEmailResult {
@@ -18,19 +18,20 @@ interface SendTestEmailResult {
   message: string;
 }
 
-// Uses getRestaurantSettings for consistency in test emails for the logged-in admin
-async function getDummyDataForTemplate(templateId: string): Promise<Record<string, any>> {
-  let restaurantName = "My Restaurant"; // Fallback
+// Fetches settings for a specific adminUserUID to populate dummy data
+async function getDummyDataForTemplate(templateId: string, adminUserUID: string): Promise<Record<string, any>> {
+  let restaurantName = "My Restaurant"; // Fallback if settings not found or name is missing
   try {
-    // Fetch settings for the currently authenticated user (admin sending the test)
-    const settings: CombinedSettings | null = await getRestaurantSettings(); 
+    console.log(`[sendTestEmailAction][getDummyDataForTemplate] Fetching settings for adminUserUID: ${adminUserUID}`);
+    const settings: CombinedSettings | null = await getSettingsById(adminUserUID); 
     if (settings?.restaurantName) {
         restaurantName = settings.restaurantName;
+        console.log(`[sendTestEmailAction][getDummyDataForTemplate] Found restaurant name: "${restaurantName}" for UID: ${adminUserUID}`);
     } else {
-        console.warn("[sendTestEmailAction] Current user's restaurant name not found or null, using fallback 'My Restaurant' for dummy data.");
+        console.warn(`[sendTestEmailAction][getDummyDataForTemplate] Restaurant name not found or null for UID: ${adminUserUID}. Using fallback "${restaurantName}". Settings object:`, settings);
     }
   } catch (settingsError) {
-      console.warn("[sendTestEmailAction] Could not fetch current user's restaurant settings for dummy data. Using fallback. Error:", settingsError);
+      console.warn(`[sendTestEmailAction][getDummyDataForTemplate] Could not fetch settings for UID: ${adminUserUID}. Using fallback. Error:`, settingsError);
   }
 
   const commonData = {
@@ -70,21 +71,27 @@ async function getDummyDataForTemplate(templateId: string): Promise<Record<strin
 
 export async function sendTestEmailAction(
   templateId: string,
-  recipientEmail: string
+  recipientEmail: string,
+  adminUserUID: string // Added adminUserUID parameter
 ): Promise<SendTestEmailResult> {
-  console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}`);
+  console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}, adminUID: ${adminUserUID}`);
 
+  if (!adminUserUID) {
+    return { success: false, message: "Admin user ID is missing. Cannot determine correct restaurant settings." };
+  }
   if (!recipientEmail || !recipientEmail.includes('@')) {
     return { success: false, message: "Invalid recipient email address provided." };
   }
 
   try {
-    const template = await getEmailTemplate(templateId);
+    const template = await getEmailTemplate(templateId); // This fetches the template structure (subject/body strings)
     if (!template || !template.subject || !template.body) {
       return { success: false, message: `Template "${templateId}" not found or is incomplete.` };
     }
     
-    const dummyData = await getDummyDataForTemplate(templateId); 
+    // Fetch dummy data, including the admin's specific restaurantName
+    const dummyData = await getDummyDataForTemplate(templateId, adminUserUID); 
+    const adminRestaurantName = dummyData.restaurantName; // This will be the admin's configured name
 
     const renderedSubject = renderSimpleTemplate(template.subject, dummyData);
     const renderedBody = renderSimpleTemplate(template.body, dummyData);
@@ -98,17 +105,17 @@ export async function sendTestEmailAction(
       to: recipientEmail,
       subject: renderedSubject,
       htmlContent: renderedBody,
-      // senderName and senderEmail will use defaults from sendEmailFlow if not specified
-      // sendEmailFlow's getDynamicSenderInfo uses getPublicRestaurantSettings for the sender name.
-      // For test emails, the body correctly uses the admin's specific restaurant name.
+      // Use the admin's specific restaurant name for the senderName in test emails
+      senderName: adminRestaurantName, 
+      // senderEmail will use defaults from sendEmailFlow if not specified
     };
 
-    console.log(`[sendTestEmailAction] Calling sendEmail flow with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "..."});
+    console.log(`[sendTestEmailAction] Calling sendEmail flow with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "...", senderName: emailInput.senderName});
     const result: SendEmailOutput = await sendEmail(emailInput);
 
     if (result.success) {
       console.log(`[sendTestEmailAction] Test email sent successfully. Message ID: ${result.messageId}`);
-      return { success: true, message: `Test email sent successfully to ${recipientEmail}. Brevo Message ID: ${result.messageId || 'N/A'}` };
+      return { success: true, message: `Test email sent successfully to ${recipientEmail} from "${adminRestaurantName}". Brevo Message ID: ${result.messageId || 'N/A'}` };
     } else {
       console.error(`[sendTestEmailAction] Failed to send test email: ${result.error}`);
       return { success: false, message: `Failed to send test email: ${result.error || 'Unknown error from email flow'}` };

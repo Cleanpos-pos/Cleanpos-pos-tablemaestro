@@ -91,13 +91,13 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
   }
 };
 
-const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings> => {
+export const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings> => {
   const settingsPath = `${SETTINGS_COLLECTION}/${settingsDocId}`;
   
   if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-    console.log(`[settingsService] Attempting to fetch PUBLIC restaurant settings from doc ID: ${settingsDocId} (Path: ${settingsPath})`);
+    console.log(`[settingsService][getSettingsById] Attempting to fetch PUBLIC restaurant settings from doc ID: ${settingsDocId} (Path: ${settingsPath})`);
   } else {
-    console.log(`[settingsService] Fetching settings for user/doc ID: ${settingsDocId} (Path: ${settingsPath})`);
+    console.log(`[settingsService][getSettingsById] Fetching settings for user/doc ID: ${settingsDocId} (Path: ${settingsPath})`);
   }
 
   try {
@@ -106,11 +106,9 @@ const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings>
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      // Start with general defaults, then overlay with fetched data
       const mergedSettings: CombinedSettings = {
         ...defaultCombinedSettings,
         ...data,
-        // Ensure critical fields like restaurantName fall back to defaults if null/undefined in DB
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
         restaurantGalleryUrls: (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls)
@@ -118,7 +116,6 @@ const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings>
                                 : defaultCombinedSettings.restaurantGalleryUrls!
                               ).map((url: string | null | undefined) => url ?? null).slice(0,6),
       };
-      // Ensure gallery always has 6 slots, filling with null if necessary
       if (mergedSettings.restaurantGalleryUrls.length < 6) {
         mergedSettings.restaurantGalleryUrls = [
             ...mergedSettings.restaurantGalleryUrls,
@@ -127,38 +124,39 @@ const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings>
       }
 
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-        console.log(`[settingsService] Found PUBLIC restaurant settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
+        console.log(`[settingsService][getSettingsById] Found PUBLIC restaurant settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
+      } else {
+        console.log(`[settingsService][getSettingsById] Found USER settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
       }
       return mergedSettings;
     } else {
+      const notFoundMsg = `[settingsService][getSettingsById] Settings document NOT FOUND for path ${settingsPath}. Returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}").`;
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-        console.warn(`[settingsService] PUBLIC restaurant settings document (${settingsPath}) NOT FOUND. Returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}"). You should create this document and populate it with your public-facing restaurant details (e.g., name, images).`);
+        console.warn(`${notFoundMsg} You should create this document for public-facing details.`);
       } else {
-        console.warn(`[settingsService] Settings document NOT FOUND for ${settingsPath}. Returning default settings.`);
+         console.warn(`${notFoundMsg} This user may need to save their settings first.`);
       }
-      return { ...defaultCombinedSettings }; // Return a copy of defaults
+      return { ...defaultCombinedSettings }; 
     }
   } catch (error) {
-    console.error(`[settingsService] Error fetching restaurant settings from ${settingsPath}: `, error);
-    if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-      console.warn(`[settingsService] Error fetching PUBLIC restaurant settings. Returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}").`);
-    }
-    return { ...defaultCombinedSettings }; // Return a copy of defaults on error
+    console.error(`[settingsService][getSettingsById] Error fetching restaurant settings from ${settingsPath}: `, error);
+    console.warn(`[settingsService][getSettingsById] Error resulted in returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}").`);
+    return { ...defaultCombinedSettings }; 
   }
 };
 
 export const getRestaurantSettings = async (): Promise<CombinedSettings> => {
   const user = auth.currentUser;
   if (!user) {
-    console.warn("[settingsService] No authenticated user for getRestaurantSettings. Returning general default settings.");
-    // For user-specific settings, returning defaults might be okay if the user is not logged in,
-    // but if they are logged in and the doc is missing, getSettingsById handles that.
-    return { ...defaultCombinedSettings };
+    console.warn("[settingsService][getRestaurantSettings] No authenticated user. Returning general default settings (name: My Restaurant).");
+    return { ...defaultCombinedSettings, restaurantName: "My Restaurant" };
   }
+  console.log(`[settingsService][getRestaurantSettings] Authenticated user found: ${user.uid}. Fetching their specific settings.`);
   return getSettingsById(user.uid);
 };
 
 export const getPublicRestaurantSettings = async (): Promise<CombinedSettings> => {
+  console.log("[settingsService][getPublicRestaurantSettings] Fetching public restaurant settings.");
   return getSettingsById(PUBLIC_RESTAURANT_ID);
 };
 
