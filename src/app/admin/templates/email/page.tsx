@@ -32,8 +32,9 @@ import {
   WAITING_LIST_TEMPLATE_ID,
   defaultWaitingListPlaceholders
 } from "@/services/templateService";
+import { getRestaurantSettings } from "@/services/settingsService"; // To fetch admin's own restaurant name
 import { auth } from "@/config/firebase";
-import { sendTestEmailAction } from "@/app/actions/emailActions"; // Import the server action
+import { sendTestEmailAction } from "@/app/actions/emailActions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -118,6 +119,7 @@ export default function EmailTemplatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUserAuthenticated, setIsUserAuthenticated] = useState(false);
+  const [currentAdminRestaurantName, setCurrentAdminRestaurantName] = useState<string>("My Restaurant"); // Default
   const [currentTemplateId, setCurrentTemplateId] = useState<string>(templateConfigurations[0].id);
   const [currentPlaceholders, setCurrentPlaceholders] = useState<string[]>(templateConfigurations[0].defaultPlaceholders);
   const [currentPlaceholderDetails, setCurrentPlaceholderDetails] = useState<Record<string, string>>(templateConfigurations[0].placeholderDetails);
@@ -134,6 +136,18 @@ export default function EmailTemplatePage() {
       body: "",
     },
   });
+
+  const fetchCurrentAdminSettings = useCallback(async () => {
+    if (auth.currentUser) {
+      try {
+        const settings = await getRestaurantSettings(); // Fetches settings for the current user
+        setCurrentAdminRestaurantName(settings?.restaurantName || "My Restaurant");
+      } catch (error) {
+        console.warn("Could not fetch admin's restaurant name for test emails, using default.", error);
+        setCurrentAdminRestaurantName("My Restaurant");
+      }
+    }
+  }, []);
 
   const fetchTemplate = useCallback(async (templateIdToFetch: string) => {
     if (!auth.currentUser) {
@@ -168,20 +182,22 @@ export default function EmailTemplatePage() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
         setTestEmailAddress(user.email || ""); 
-        setIsUserAuthenticated(true); // Set state here
+        setIsUserAuthenticated(true);
         fetchTemplate(currentTemplateId); 
+        fetchCurrentAdminSettings(); // Fetch admin's specific restaurant name
       } else {
         setIsUserAuthenticated(false);
         setIsLoading(false);
         form.reset({subject: "Please log in", body: "Log in to manage email templates."});
+        setCurrentAdminRestaurantName("My Restaurant"); // Reset on logout
       }
     });
     return () => unsubscribe();
-  }, [fetchTemplate, currentTemplateId]); 
+  }, [fetchTemplate, currentTemplateId, fetchCurrentAdminSettings]); 
 
   const handleTabChange = (newTemplateId: string) => {
     setCurrentTemplateId(newTemplateId);
-    if (isUserAuthenticated) { // Check internal state
+    if (isUserAuthenticated) {
       fetchTemplate(newTemplateId);
     } else {
       const config = templateConfigurations.find(tc => tc.id === newTemplateId);
@@ -223,7 +239,7 @@ export default function EmailTemplatePage() {
 
   const handleActualSendTestEmail = async () => {
     const currentUser = auth.currentUser;
-    if (!currentUser || !currentUser.uid) { // Check auth.currentUser directly
+    if (!currentUser || !currentUser.uid) {
       toast({ title: "Not Authenticated", description: "Please log in to send a test email.", variant: "destructive" });
       return;
     }
@@ -245,8 +261,13 @@ export default function EmailTemplatePage() {
     });
 
     try {
-      // Pass the authenticated user's UID to the server action
-      const result = await sendTestEmailAction(currentTemplateId, testEmailAddress, currentUser.uid);
+      // Pass the admin's UID and their specific restaurant name to the server action
+      const result = await sendTestEmailAction(
+        currentTemplateId, 
+        testEmailAddress, 
+        currentUser.uid,
+        currentAdminRestaurantName // Pass the fetched admin-specific restaurant name
+      );
       if (result.success) {
         toast({
           title: "Test Email Sent!",
@@ -412,6 +433,7 @@ export default function EmailTemplatePage() {
                             <AlertDialogDescription className="font-body">
                               Enter the email address to send a test of the "{templateConfigurations.find(t=>t.id === currentTemplateId)?.label}" template to.
                               The template content used will be the **current content in the form fields above (not necessarily the last saved version)**.
+                              The restaurant name used will be: "{currentAdminRestaurantName}".
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <Input 

@@ -9,8 +9,7 @@ import {
     WAITING_LIST_TEMPLATE_ID
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
-import type { CombinedSettings } from '@/lib/types';
-import { getSettingsById } from '@/services/settingsService'; // Changed to getSettingsById
+// No longer need getSettingsById or CombinedSettings here for fetching restaurant name
 import { format } from 'date-fns';
 
 interface SendTestEmailResult {
@@ -18,25 +17,15 @@ interface SendTestEmailResult {
   message: string;
 }
 
-// Fetches settings for a specific adminUserUID to populate dummy data
-async function getDummyDataForTemplate(templateId: string, adminUserUID: string): Promise<Record<string, any>> {
-  let restaurantName = "My Restaurant"; // Fallback if settings not found or name is missing
-  try {
-    console.log(`[sendTestEmailAction][getDummyDataForTemplate] Fetching settings for adminUserUID: ${adminUserUID}`);
-    const settings: CombinedSettings | null = await getSettingsById(adminUserUID); 
-    if (settings?.restaurantName) {
-        restaurantName = settings.restaurantName;
-        console.log(`[sendTestEmailAction][getDummyDataForTemplate] Found restaurant name: "${restaurantName}" for UID: ${adminUserUID}`);
-    } else {
-        console.warn(`[sendTestEmailAction][getDummyDataForTemplate] Restaurant name not found or null for UID: ${adminUserUID}. Using fallback "${restaurantName}". Settings object:`, settings);
-    }
-  } catch (settingsError) {
-      console.warn(`[sendTestEmailAction][getDummyDataForTemplate] Could not fetch settings for UID: ${adminUserUID}. Using fallback. Error:`, settingsError);
-  }
-
+// No longer fetches settings here, restaurantName is passed in
+function getDummyDataForTemplate(
+  templateId: string, 
+  adminProvidedRestaurantName: string // Directly use the passed restaurant name
+): Record<string, any> {
+  
   const commonData = {
     guestName: 'Test Guest',
-    restaurantName: restaurantName,
+    restaurantName: adminProvidedRestaurantName, // Use the name passed from the client/action
   };
   const currentDate = new Date();
 
@@ -72,26 +61,29 @@ async function getDummyDataForTemplate(templateId: string, adminUserUID: string)
 export async function sendTestEmailAction(
   templateId: string,
   recipientEmail: string,
-  adminUserUID: string // Added adminUserUID parameter
+  adminUserUID: string, // Keep for potential future use or logging, but name comes from adminRestaurantName
+  adminRestaurantName: string // New parameter for the admin's specific restaurant name
 ): Promise<SendTestEmailResult> {
-  console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}, adminUID: ${adminUserUID}`);
+  console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}, adminUID: ${adminUserUID}, adminRestaurantName: "${adminRestaurantName}"`);
 
-  if (!adminUserUID) {
-    return { success: false, message: "Admin user ID is missing. Cannot determine correct restaurant settings." };
+  if (!adminUserUID) { // Still good to check for UID for other purposes if needed
+    return { success: false, message: "Admin user ID is missing." };
+  }
+  if (!adminRestaurantName) {
+    return { success: false, message: "Restaurant name for the admin was not provided." };
   }
   if (!recipientEmail || !recipientEmail.includes('@')) {
     return { success: false, message: "Invalid recipient email address provided." };
   }
 
   try {
-    const template = await getEmailTemplate(templateId); // This fetches the template structure (subject/body strings)
+    const template = await getEmailTemplate(templateId); 
     if (!template || !template.subject || !template.body) {
       return { success: false, message: `Template "${templateId}" not found or is incomplete.` };
     }
     
-    // Fetch dummy data, including the admin's specific restaurantName
-    const dummyData = await getDummyDataForTemplate(templateId, adminUserUID); 
-    const adminRestaurantName = dummyData.restaurantName; // This will be the admin's configured name
+    // Use the adminRestaurantName passed from the client
+    const dummyData = getDummyDataForTemplate(templateId, adminRestaurantName); 
 
     const renderedSubject = renderSimpleTemplate(template.subject, dummyData);
     const renderedBody = renderSimpleTemplate(template.body, dummyData);
@@ -105,9 +97,7 @@ export async function sendTestEmailAction(
       to: recipientEmail,
       subject: renderedSubject,
       htmlContent: renderedBody,
-      // Use the admin's specific restaurant name for the senderName in test emails
-      senderName: adminRestaurantName, 
-      // senderEmail will use defaults from sendEmailFlow if not specified
+      senderName: adminRestaurantName, // Use the admin's specific restaurant name for the senderName
     };
 
     console.log(`[sendTestEmailAction] Calling sendEmail flow with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "...", senderName: emailInput.senderName});
