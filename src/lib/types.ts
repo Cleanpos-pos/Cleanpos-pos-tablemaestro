@@ -21,6 +21,7 @@ export interface Booking {
   notes?: string;
   createdAt: string; // ISO date string
   tableId?: string; // Optional: if assigned to a specific table
+  ownerUID?: string; // UID of the restaurant owner
 }
 
 export interface TimeSlot {
@@ -86,3 +87,4 @@ export interface EmailTemplate {
 }
 
 export type EmailTemplateInput = Pick<EmailTemplate, 'subject' | 'body'>;
+
