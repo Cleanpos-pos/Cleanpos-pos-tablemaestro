@@ -1,6 +1,6 @@
 
 import { db, auth } from '@/config/firebase';
-import type { Booking } from '@/lib/types';
+import type { Booking, BookingInput } from '@/lib/types';
 import {
   collection,
   getDocs,
@@ -39,20 +39,16 @@ const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData>): Booking 
   } as Booking;
 };
 
-
+// Potential Firestore Composite Index for this query:
+// Collection: bookings
+// Fields:
+// 1. ownerUID (Ascending/Descending)
+// 2. createdAt (Descending)
 export const getBookings = async (): Promise<Booking[]> => {
   const user = auth.currentUser;
   if (!user) {
-    // If rules require ownerUID for reads, this might still fail if not all bookings have it.
-    // Or, if a general "list" is disallowed, this needs to be user-specific.
-    // For now, assuming the rules allow list for owner if bookings have ownerUID.
-    console.warn("[bookingService] getBookings called without an authenticated user. Depending on rules, this might return empty or fail.");
-    // Depending on rules for listing /bookings, you might want to return [] or throw.
-    // If rules are `allow list: if request.auth.uid == resource.data.ownerUID;` this would be complex.
-    // A more common pattern is `allow list: if request.auth != null;` then filter client-side,
-    // or query with `where('ownerUID', '==', user.uid)`.
-    // For now, just attempt the query. If rules require ownerUID for all list items, it may fail.
-    // Assuming for now the list rule is permissive enough for an admin to see their bookings.
+    console.warn("[bookingService] getBookings called without an authenticated user. Returning empty array.");
+    return [];
   }
   
   try {
@@ -61,8 +57,6 @@ export const getBookings = async (): Promise<Booking[]> => {
         // Fetch bookings where ownerUID matches the current user's UID
         q = query(collection(db, BOOKINGS_COLLECTION), where('ownerUID', '==', user.uid), orderBy('createdAt', 'desc'));
     } else {
-        // If no user, perhaps fetch no bookings or handle as per app's public requirements (if any for bookings)
-        // For an admin app, typically no user means no data.
         console.log("[bookingService] No user logged in, returning empty bookings array from getBookings.");
         return [];
     }
@@ -74,7 +68,6 @@ export const getBookings = async (): Promise<Booking[]> => {
   }
 };
 
-export type BookingInput = Omit<Booking, 'id' | 'createdAt'> & { createdAt?: Timestamp };
 
 export const addBookingToFirestore = async (bookingData: BookingInput): Promise<string> => {
   const user = auth.currentUser;
@@ -95,7 +88,7 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
   }
 };
 
-export type BookingUpdateData = Partial<Omit<Booking, 'id' | 'createdAt'>>;
+export type BookingUpdateData = Partial<Omit<Booking, 'id' | 'createdAt' | 'ownerUID'>>;
 
 export const updateBookingInFirestore = async (bookingId: string, bookingData: BookingUpdateData): Promise<void> => {
   const user = auth.currentUser;
@@ -103,11 +96,9 @@ export const updateBookingInFirestore = async (bookingId: string, bookingData: B
     console.error("Error updating booking: User not authenticated.");
     throw new Error("User not authenticated. Cannot update booking.");
   }
-  // Add check: does this user own this booking? Not strictly needed if ID is unguessable AND rules enforce owner.
-  // However, it's good practice if IDs might be known.
-  // For now, relying on Firestore rules for write authorization.
   try {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
+    // Firestore rules should verify that user.uid matches the booking's ownerUID for updates.
     await updateDoc(bookingRef, bookingData);
   } catch (error) {
     console.error("Error updating booking: ", error);
@@ -121,7 +112,7 @@ export const deleteBookingFromFirestore = async (bookingId: string): Promise<voi
     console.error("Error deleting booking: User not authenticated.");
     throw new Error("User not authenticated. Cannot delete booking.");
   }
-  // Similar to update, relying on Firestore rules for delete authorization.
+  // Firestore rules should verify that user.uid matches the booking's ownerUID for deletes.
   try {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
     await deleteDoc(bookingRef);
@@ -131,15 +122,14 @@ export const deleteBookingFromFirestore = async (bookingId: string): Promise<voi
   }
 };
 
-// Firestore Composite Index Required for this query:
-// Collection ID: bookings
+// Potential Firestore Composite Index for this query:
+// Collection: bookings
 // Fields:
-// 1. tableId ASC
-// 2. status ASC (or status IN for multiple statuses)
-// 3. date ASC
-// 4. time ASC
-// (Potentially with ownerUID as the first field if all queries are user-specific)
-// e.g., ownerUID ASC, tableId ASC, status ASC, date ASC, time ASC
+// 1. ownerUID (Ascending/Descending)
+// 2. tableId (Ascending/Descending)
+// 3. status (Ascending/Descending - or for 'in' queries, this might affect indexing strategy)
+// 4. date (Ascending)
+// 5. time (Ascending)
 export const getActiveBookingsForTable = async (tableId: string): Promise<Booking[]> => {
   const user = auth.currentUser;
   if (!user) {
@@ -149,7 +139,7 @@ export const getActiveBookingsForTable = async (tableId: string): Promise<Bookin
   try {
     const q = query(
       collection(db, BOOKINGS_COLLECTION),
-      where('ownerUID', '==', user.uid), // Ensure user only sees their bookings
+      where('ownerUID', '==', user.uid), 
       where('tableId', '==', tableId),
       where('status', 'in', ['seated', 'confirmed', 'pending']),
       orderBy('date', 'asc'), 
@@ -162,4 +152,3 @@ export const getActiveBookingsForTable = async (tableId: string): Promise<Bookin
     throw error;
   }
 };
-
