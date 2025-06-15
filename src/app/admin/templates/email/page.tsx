@@ -18,10 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info, FileText } from "lucide-react";
+import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info, FileText, PlusSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EmailTemplateInput } from "@/lib/types";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { 
   getEmailTemplate, 
   saveEmailTemplate, 
@@ -124,6 +124,8 @@ export default function EmailTemplatePage() {
   const [testEmailAddress, setTestEmailAddress] = useState("");
   const [isTestEmailDialogOpen, setIsTestEmailDialogOpen] = useState(false);
 
+  const lastFocusedFieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const lastFocusedFieldNameRef = useRef<'subject' | 'body' | null>(null);
 
   const form = useForm<EmailTemplateFormValues>({
     resolver: zodResolver(emailTemplateFormSchema),
@@ -165,7 +167,7 @@ export default function EmailTemplatePage() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        setTestEmailAddress(user.email || ""); // Pre-fill test email with user's email
+        setTestEmailAddress(user.email || ""); 
         fetchTemplate(currentTemplateId); 
       } else {
         setIsUserAuthenticated(false);
@@ -200,7 +202,7 @@ export default function EmailTemplatePage() {
         title: "Template Saved",
         description: `The "${templateConfigurations.find(t=>t.id === currentTemplateId)?.label}" email template has been updated.`,
       });
-    } catch (error: any) { // Changed to 'any' to access potential 'code' property
+    } catch (error: any) { 
       let userFriendlyMessage = "Could not save the template. Please try again.";
       if (error?.code === 'permission-denied' || (error instanceof Error && (error.message.toLowerCase().includes('permission-denied') || error.message.toLowerCase().includes('insufficient permissions')))) {
         userFriendlyMessage = "Save failed due to insufficient permissions. Please check your Firestore security rules to ensure you have write access to your email templates. (Path: restaurantConfig/YOUR_USER_ID/emailTemplates/TEMPLATE_ID)";
@@ -266,8 +268,42 @@ export default function EmailTemplatePage() {
     }
   };
   
-  const ActiveIcon = templateConfigurations.find(t => t.id === currentTemplateId)?.icon || MailCheck;
+  const handleInsertPlaceholder = (placeholder: string) => {
+    const fieldElement = lastFocusedFieldRef.current;
+    const fieldName = lastFocusedFieldNameRef.current;
 
+    if (!fieldElement || !fieldName) {
+      toast({
+        title: "Action Needed",
+        description: "Please click into the Subject or Body field first to insert a placeholder.",
+        variant: "default",
+      });
+      return;
+    }
+
+    const start = fieldElement.selectionStart;
+    const end = fieldElement.selectionEnd;
+    const currentValue = form.getValues(fieldName);
+
+    if (typeof start === 'number' && typeof end === 'number') {
+      const newValue = currentValue.substring(0, start) + placeholder + currentValue.substring(end);
+      form.setValue(fieldName, newValue, { shouldDirty: true, shouldValidate: true });
+
+      // Refocus and set cursor position
+      fieldElement.focus();
+      // Use setTimeout to ensure the DOM has updated after setValue
+      setTimeout(() => {
+        fieldElement.setSelectionRange(start + placeholder.length, start + placeholder.length);
+      }, 0);
+    } else {
+      // Fallback if selectionStart/End is not available (should not happen for input/textarea)
+      const newValue = currentValue + placeholder;
+      form.setValue(fieldName, newValue, { shouldDirty: true, shouldValidate: true });
+      fieldElement.focus();
+    }
+  };
+
+  const ActiveIcon = templateConfigurations.find(t => t.id === currentTemplateId)?.icon || MailCheck;
 
   if (isLoading && isUserAuthenticated) {
     return (
@@ -327,7 +363,13 @@ export default function EmailTemplatePage() {
                           <FormItem>
                             <FormLabel className="font-body text-base">Email Subject</FormLabel>
                             <FormControl>
-                              <Input {...field} placeholder="Enter email subject" className="font-body" disabled={isLoading || isSaving || !isUserAuthenticated} />
+                              <Input 
+                                {...field} 
+                                placeholder="Enter email subject" 
+                                className="font-body" 
+                                disabled={isLoading || isSaving || !isUserAuthenticated}
+                                onFocus={(e) => { lastFocusedFieldRef.current = e.target; lastFocusedFieldNameRef.current = 'subject'; }}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -345,6 +387,7 @@ export default function EmailTemplatePage() {
                                 placeholder="Enter your email content here. Use placeholders like {{guestName}}."
                                 className="font-body min-h-[300px] lg:min-h-[350px] text-sm leading-relaxed"
                                 disabled={isLoading || isSaving || !isUserAuthenticated}
+                                onFocus={(e) => { lastFocusedFieldRef.current = e.target; lastFocusedFieldNameRef.current = 'body'; }}
                               />
                             </FormControl>
                             <FormDescription className="font-body text-xs">
@@ -417,9 +460,22 @@ export default function EmailTemplatePage() {
                   {currentPlaceholders.length > 0 ? (
                     <ul className="space-y-3">
                       {currentPlaceholders.map((placeholder) => (
-                        <li key={placeholder}>
-                          <p className="font-mono text-sm text-accent bg-accent/10 px-2 py-1 rounded-md inline-block">{placeholder}</p>
-                          <p className="text-xs text-muted-foreground font-body mt-1">{currentPlaceholderDetails[placeholder] || "No description available."}</p>
+                        <li key={placeholder} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 py-1">
+                          <div className="flex-grow">
+                            <p className="font-mono text-sm text-accent bg-accent/10 px-2 py-1 rounded-md inline-block">{placeholder}</p>
+                            <p className="text-xs text-muted-foreground font-body mt-1">{currentPlaceholderDetails[placeholder] || "No description available."}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 btn-subtle-animate text-xs h-7 mt-2 sm:mt-0"
+                            onClick={() => handleInsertPlaceholder(placeholder)}
+                            disabled={isLoading || isSaving || !isUserAuthenticated}
+                            title={`Insert ${placeholder}`}
+                          >
+                            <PlusSquare className="h-3 w-3 mr-1" /> Insert
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -432,7 +488,7 @@ export default function EmailTemplatePage() {
                           <p className="text-xs font-body text-blue-700">
                               The "Send Test Email" feature uses the **last saved version** of the template.
                               Ensure your `GEMINI_API_KEY` (for Genkit Google AI plugin) and `BREVO_API_KEY` (for Brevo email service) are correctly set in the `.env` file.
-                              The sender email is currently configured in `sendEmailFlow.ts` as 'info@posso.uk'; ensure this is a verified sender in your Brevo account.
+                              The sender email is currently configured in `sendEmailFlow.ts` as `info@posso.uk`; ensure this is a verified sender in your Brevo account.
                               A server restart might be required after adding/changing API keys in `.env`.
                           </p>
                       </div>
@@ -446,4 +502,3 @@ export default function EmailTemplatePage() {
     </div>
   );
 }
-
