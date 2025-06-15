@@ -6,18 +6,21 @@ import {
     getEmailTemplate, 
     BOOKING_ACCEPTED_TEMPLATE_ID,
     NO_AVAILABILITY_TEMPLATE_ID,
-    WAITING_LIST_TEMPLATE_ID
+    WAITING_LIST_TEMPLATE_ID,
+    defaultBookingAcceptedPlaceholders, // For sendTestEmailAction
+    defaultNoAvailabilityPlaceholders,
+    defaultWaitingListPlaceholders
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
-// No longer need getSettingsById or CombinedSettings here for fetching restaurant name
-import { format } from 'date-fns';
+import { getSettingsById } from '@/services/settingsService'; // For fetching specific admin's restaurant name
+import { format, parseISO, isValid } from 'date-fns';
 
-interface SendTestEmailResult {
+interface ActionResult {
   success: boolean;
   message: string;
 }
 
-// No longer fetches settings here, restaurantName is passed in
+// Dummy data generator for the main Email Templates admin page (test sends)
 function getDummyDataForTemplate(
   templateId: string, 
   adminProvidedRestaurantName: string // Directly use the passed restaurant name
@@ -25,15 +28,20 @@ function getDummyDataForTemplate(
   
   const commonData = {
     guestName: 'Test Guest',
-    restaurantName: adminProvidedRestaurantName, // Use the name passed from the client/action
+    restaurantName: adminProvidedRestaurantName, 
   };
   const currentDate = new Date();
+  let bookingDate = 'N/A';
+  try {
+    bookingDate = format(currentDate, 'MMMM d, yyyy');
+  } catch (e) {/* no-op, keep N/A */}
+
 
   switch (templateId) {
     case BOOKING_ACCEPTED_TEMPLATE_ID:
       return {
         ...commonData,
-        bookingDate: format(currentDate, 'MMMM d, yyyy'),
+        bookingDate: bookingDate,
         bookingTime: '07:00 PM',
         partySize: 2,
         notes: 'This is a test booking with some special notes.',
@@ -41,15 +49,17 @@ function getDummyDataForTemplate(
     case NO_AVAILABILITY_TEMPLATE_ID:
       return {
         ...commonData,
-        requestedDate: format(currentDate, 'MMMM d, yyyy'),
+        requestedDate: bookingDate,
         requestedTime: '08:00 PM',
         requestedPartySize: 4,
       };
     case WAITING_LIST_TEMPLATE_ID:
       return {
         ...commonData,
-        requestedDate: format(currentDate, 'MMMM d, yyyy'),
-        requestedTime: '07:30 PM',
+        requestedDate: bookingDate, // Re-using for waiting list context
+        bookingDate: bookingDate, // For consistency if template uses bookingDate
+        requestedTime: '07:30 PM', // Re-using for waiting list context
+        bookingTime: '07:30 PM',   // For consistency if template uses bookingTime
         partySize: 3,
         estimatedWaitTime: '30-45 minutes',
       };
@@ -58,15 +68,16 @@ function getDummyDataForTemplate(
   }
 }
 
+// Action for the Email Templates admin page
 export async function sendTestEmailAction(
   templateId: string,
   recipientEmail: string,
-  adminUserUID: string, // Keep for potential future use or logging, but name comes from adminRestaurantName
-  adminRestaurantName: string // New parameter for the admin's specific restaurant name
-): Promise<SendTestEmailResult> {
+  adminUserUID: string, 
+  adminRestaurantName: string 
+): Promise<ActionResult> {
   console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}, adminUID: ${adminUserUID}, adminRestaurantName: "${adminRestaurantName}"`);
 
-  if (!adminUserUID) { // Still good to check for UID for other purposes if needed
+  if (!adminUserUID) { 
     return { success: false, message: "Admin user ID is missing." };
   }
   if (!adminRestaurantName) {
@@ -82,7 +93,6 @@ export async function sendTestEmailAction(
       return { success: false, message: `Template "${templateId}" not found or is incomplete.` };
     }
     
-    // Use the adminRestaurantName passed from the client
     const dummyData = getDummyDataForTemplate(templateId, adminRestaurantName); 
 
     const renderedSubject = renderSimpleTemplate(template.subject, dummyData);
@@ -97,7 +107,7 @@ export async function sendTestEmailAction(
       to: recipientEmail,
       subject: renderedSubject,
       htmlContent: renderedBody,
-      senderName: adminRestaurantName, // Use the admin's specific restaurant name for the senderName
+      senderName: adminRestaurantName, 
     };
 
     console.log(`[sendTestEmailAction] Calling sendEmail flow with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "...", senderName: emailInput.senderName});
@@ -117,3 +127,129 @@ export async function sendTestEmailAction(
   }
 }
 
+
+// --- New Actions for Edit Booking Page ---
+
+interface BookingEmailParams {
+  recipientEmail: string;
+  adminUserUID: string;
+  adminRestaurantName: string; // Passed from client
+  bookingDetails: {
+    guestName: string;
+    date: string; // YYYY-MM-DD string
+    time: string; // HH:MM
+    partySize: number;
+  };
+}
+
+export async function sendNoAvailabilityEmailForBookingAction(params: BookingEmailParams): Promise<ActionResult> {
+  const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
+  const templateId = NO_AVAILABILITY_TEMPLATE_ID;
+  console.log(`[sendNoAvailabilityEmailForBookingAction] Initiated for ${recipientEmail}, admin: ${adminUserUID}, booking guest: ${bookingDetails.guestName}`);
+
+  if (!recipientEmail || !recipientEmail.includes('@')) return { success: false, message: "Invalid recipient email." };
+  if (!adminUserUID) return { success: false, message: "Admin user ID missing." };
+  if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
+
+
+  try {
+    const template = await getEmailTemplate(templateId);
+    if (!template || !template.subject || !template.body) {
+      return { success: false, message: `"${templateId}" template not found or incomplete.` };
+    }
+    
+    let formattedDate = 'N/A';
+    if (bookingDetails.date) {
+        try {
+            const parsedDate = parseISO(bookingDetails.date);
+            if (isValid(parsedDate)) {
+                formattedDate = format(parsedDate, 'MMMM d, yyyy');
+            }
+        } catch (e) { console.warn(`Invalid date for No Availability email: ${bookingDetails.date}`); }
+    }
+
+    const templateData = {
+      guestName: bookingDetails.guestName,
+      restaurantName: adminRestaurantName,
+      requestedDate: formattedDate,
+      requestedTime: bookingDetails.time,
+      requestedPartySize: bookingDetails.partySize,
+    };
+
+    const subject = renderSimpleTemplate(template.subject, templateData);
+    const body = renderSimpleTemplate(template.body, templateData);
+
+    if (!subject.trim() || !body.trim()) {
+      return { success: false, message: "Rendered subject or body is empty. Check template and data." };
+    }
+
+    const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
+    const result = await sendEmail(emailInput);
+
+    return result.success 
+      ? { success: true, message: `No Availability email sent to ${recipientEmail}.` }
+      : { success: false, message: `Failed to send No Availability email: ${result.error || 'Unknown error'}` };
+
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown server error.';
+    console.error(`[sendNoAvailabilityEmailForBookingAction] Error:`, error);
+    return { success: false, message: `Error sending email: ${errMsg}` };
+  }
+}
+
+export async function sendWaitingListEmailForBookingAction(params: BookingEmailParams): Promise<ActionResult> {
+  const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
+  const templateId = WAITING_LIST_TEMPLATE_ID;
+  console.log(`[sendWaitingListEmailForBookingAction] Initiated for ${recipientEmail}, admin: ${adminUserUID}, booking guest: ${bookingDetails.guestName}`);
+
+  if (!recipientEmail || !recipientEmail.includes('@')) return { success: false, message: "Invalid recipient email." };
+  if (!adminUserUID) return { success: false, message: "Admin user ID missing." };
+  if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
+
+  try {
+    const template = await getEmailTemplate(templateId);
+    if (!template || !template.subject || !template.body) {
+      return { success: false, message: `"${templateId}" template not found or incomplete.` };
+    }
+
+    let formattedDate = 'N/A';
+    if (bookingDetails.date) {
+        try {
+            const parsedDate = parseISO(bookingDetails.date);
+             if (isValid(parsedDate)) {
+                formattedDate = format(parsedDate, 'MMMM d, yyyy');
+            }
+        } catch (e) { console.warn(`Invalid date for Waiting List email: ${bookingDetails.date}`); }
+    }
+    
+    const templateData = {
+      guestName: bookingDetails.guestName,
+      restaurantName: adminRestaurantName,
+      requestedDate: formattedDate, // Using booking date as requested date
+      bookingDate: formattedDate,   // For templates that might use {{bookingDate}}
+      requestedTime: bookingDetails.time, // Using booking time as requested time
+      bookingTime: bookingDetails.time,   // For templates that might use {{bookingTime}}
+      partySize: bookingDetails.partySize,
+      estimatedWaitTime: "Please contact us for current wait times.", // Placeholder
+    };
+
+    const subject = renderSimpleTemplate(template.subject, templateData);
+    const body = renderSimpleTemplate(template.body, templateData);
+    
+    if (!subject.trim() || !body.trim()) {
+      return { success: false, message: "Rendered subject or body is empty. Check template and data." };
+    }
+
+    const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
+    const result = await sendEmail(emailInput);
+
+    return result.success 
+      ? { success: true, message: `Waiting List email sent to ${recipientEmail}.` }
+      : { success: false, message: `Failed to send Waiting List email: ${result.error || 'Unknown error'}` };
+
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown server error.';
+    console.error(`[sendWaitingListEmailForBookingAction] Error:`, error);
+    return { success: false, message: `Error sending email: ${errMsg}` };
+  }
+}
