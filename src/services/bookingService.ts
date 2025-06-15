@@ -15,35 +15,116 @@ import {
   serverTimestamp,
   DocumentData,
   QueryDocumentSnapshot,
+  getDoc, // Added getDoc
 } from 'firebase/firestore';
+
+// Imports for email sending
+import { sendEmail, type SendEmailInput } from '@/ai/flows/sendEmailFlow';
+import { getEmailTemplate, BOOKING_ACCEPTED_TEMPLATE_ID } from '@/services/templateService';
+import { renderSimpleTemplate } from '@/lib/templateUtils';
+import { getSettingsById } from '@/services/settingsService';
+import { format as formatDateFns, parseISO } from 'date-fns';
 
 const BOOKINGS_COLLECTION = 'bookings';
 
 // Helper to convert Firestore Timestamps to ISO strings and include doc ID
-const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData>): Booking => {
+const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData> | DocumentSnapshot<DocumentData>): Booking => {
   const data = docSnap.data();
+  if (!data) {
+    // This case should ideally not happen if docSnap.exists() is checked before calling,
+    // but as a safeguard for type DocumentSnapshot which might not exist.
+    throw new Error(`Document data not found for doc ID: ${docSnap.id}`);
+  }
   return {
     id: docSnap.id,
     guestName: data.guestName,
-    date: data.date, // Should be YYYY-MM-DD string
+    date: data.date, 
     time: data.time,
     partySize: data.partySize,
     status: data.status,
-    // Ensure createdAt is handled: Firestore Timestamp or existing ISO string
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString()),
     guestEmail: data.guestEmail,
     guestPhone: data.guestPhone,
     notes: data.notes,
     tableId: data.tableId,
-    ownerUID: data.ownerUID, // Map ownerUID
+    ownerUID: data.ownerUID, 
   } as Booking;
 };
 
-// Potential Firestore Composite Index for this query:
-// Collection: bookings
-// Fields:
-// 1. ownerUID (Ascending/Descending)
-// 2. createdAt (Descending)
+
+async function triggerBookingConfirmationEmail(
+  bookingDetails: BookingInput | Booking, 
+  ownerUID: string,
+  bookingIdForLog: string 
+) {
+  if (!bookingDetails.guestEmail) {
+    console.log(`[BookingService][ConfirmationEmail] No guest email for booking ${bookingIdForLog}. Skipping confirmation email.`);
+    return;
+  }
+  if (bookingDetails.status !== 'confirmed') {
+    console.log(`[BookingService][ConfirmationEmail] Booking ${bookingIdForLog} status is not 'confirmed' (it's ${bookingDetails.status}). Skipping confirmation email.`);
+    return;
+  }
+
+  console.log(`[BookingService][ConfirmationEmail] Attempting to send confirmation for booking ${bookingIdForLog} to ${bookingDetails.guestEmail}`);
+
+  try {
+    const ownerSettings = await getSettingsById(ownerUID);
+    const restaurantName = ownerSettings?.restaurantName || "Our Restaurant"; 
+
+    const template = await getEmailTemplate(BOOKING_ACCEPTED_TEMPLATE_ID);
+    if (!template || !template.subject || !template.body) {
+      console.error(`[BookingService][ConfirmationEmail] Booking Accepted template (ID: ${BOOKING_ACCEPTED_TEMPLATE_ID}) not found or incomplete for booking ${bookingIdForLog}.`);
+      return;
+    }
+    
+    let formattedBookingDate = 'N/A';
+    if (bookingDetails.date) {
+        try {
+            // Date is expected to be 'YYYY-MM-DD' string from BookingInput or Booking
+            const parsedDate = parseISO(bookingDetails.date); 
+            formattedBookingDate = formatDateFns(parsedDate, 'MMMM d, yyyy');
+        } catch (e) {
+            console.warn(`[BookingService][ConfirmationEmail] Could not parse date "${bookingDetails.date}" for booking ${bookingIdForLog}. Error: ${e instanceof Error ? e.message : String(e)}. Using "N/A".`);
+        }
+    }
+
+    const templateData = {
+      guestName: bookingDetails.guestName,
+      bookingDate: formattedBookingDate,
+      bookingTime: bookingDetails.time, 
+      partySize: bookingDetails.partySize,
+      restaurantName: restaurantName,
+      notes: bookingDetails.notes || '', 
+    };
+
+    const subject = renderSimpleTemplate(template.subject, templateData);
+    const htmlContent = renderSimpleTemplate(template.body, templateData);
+
+    if (!subject.trim() || !htmlContent.trim()) {
+        console.error(`[BookingService][ConfirmationEmail] Rendered subject or body is empty for booking ${bookingIdForLog} using template ID ${BOOKING_ACCEPTED_TEMPLATE_ID}. Aborting email.`);
+        return;
+    }
+
+    const emailInput: SendEmailInput = {
+      to: bookingDetails.guestEmail,
+      subject,
+      htmlContent,
+      senderName: restaurantName, 
+    };
+
+    const emailResult = await sendEmail(emailInput);
+    if (emailResult.success) {
+      console.log(`[BookingService][ConfirmationEmail] Confirmation email sent successfully for booking ${bookingIdForLog} to ${bookingDetails.guestEmail}. Message ID: ${emailResult.messageId}`);
+    } else {
+      console.error(`[BookingService][ConfirmationEmail] Failed to send confirmation email for booking ${bookingIdForLog}: ${emailResult.error}`);
+    }
+  } catch (error) {
+    console.error(`[BookingService][ConfirmationEmail] Error sending confirmation email for booking ${bookingIdForLog}:`, error);
+  }
+}
+
+
 export const getBookings = async (): Promise<Booking[]> => {
   const user = auth.currentUser;
   if (!user) {
@@ -52,14 +133,7 @@ export const getBookings = async (): Promise<Booking[]> => {
   }
   
   try {
-    let q;
-    if (user) {
-        // Fetch bookings where ownerUID matches the current user's UID
-        q = query(collection(db, BOOKINGS_COLLECTION), where('ownerUID', '==', user.uid), orderBy('createdAt', 'desc'));
-    } else {
-        console.log("[bookingService] No user logged in, returning empty bookings array from getBookings.");
-        return [];
-    }
+    const q = query(collection(db, BOOKINGS_COLLECTION), where('ownerUID', '==', user.uid), orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(mapDocToBooking);
   } catch (error) {
@@ -78,9 +152,15 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
   try {
     const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
       ...bookingData,
-      ownerUID: user.uid, // Add ownerUID
+      ownerUID: user.uid, 
       createdAt: serverTimestamp(), 
     });
+
+    if (bookingData.status === 'confirmed') {
+      triggerBookingConfirmationEmail(bookingData, user.uid, docRef.id).catch(err => {
+        console.error(`[BookingService][addBooking] Background confirmation email trigger failed for new booking ${docRef.id}:`, err);
+      });
+    }
     return docRef.id;
   } catch (error) {
     console.error("Error adding booking: ", error);
@@ -98,8 +178,22 @@ export const updateBookingInFirestore = async (bookingId: string, bookingData: B
   }
   try {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
-    // Firestore rules should verify that user.uid matches the booking's ownerUID for updates.
-    await updateDoc(bookingRef, bookingData);
+    await updateDoc(bookingRef, {
+        ...bookingData,
+        updatedAt: serverTimestamp()
+    });
+
+    if (bookingData.status === 'confirmed') {
+      const updatedDocSnap = await getDoc(bookingRef); 
+      if (updatedDocSnap.exists()) {
+        const fullBookingDetailsForEmail = mapDocToBooking(updatedDocSnap); 
+        triggerBookingConfirmationEmail(fullBookingDetailsForEmail, user.uid, bookingId).catch(err => {
+            console.error(`[BookingService][updateBooking] Background confirmation email trigger failed for updated booking ${bookingId}:`, err);
+        });
+      } else {
+         console.warn(`[BookingService][updateBooking] Booking document ${bookingId} not found after update. Cannot send confirmation email.`);
+      }
+    }
   } catch (error) {
     console.error("Error updating booking: ", error);
     throw error;
@@ -112,7 +206,6 @@ export const deleteBookingFromFirestore = async (bookingId: string): Promise<voi
     console.error("Error deleting booking: User not authenticated.");
     throw new Error("User not authenticated. Cannot delete booking.");
   }
-  // Firestore rules should verify that user.uid matches the booking's ownerUID for deletes.
   try {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
     await deleteDoc(bookingRef);
@@ -122,14 +215,6 @@ export const deleteBookingFromFirestore = async (bookingId: string): Promise<voi
   }
 };
 
-// Potential Firestore Composite Index for this query:
-// Collection: bookings
-// Fields:
-// 1. ownerUID (Ascending/Descending)
-// 2. tableId (Ascending/Descending)
-// 3. status (Ascending/Descending - or for 'in' queries, this might affect indexing strategy)
-// 4. date (Ascending)
-// 5. time (Ascending)
 export const getActiveBookingsForTable = async (tableId: string): Promise<Booking[]> => {
   const user = auth.currentUser;
   if (!user) {
@@ -152,3 +237,6 @@ export const getActiveBookingsForTable = async (tableId: string): Promise<Bookin
     throw error;
   }
 };
+
+
+    
