@@ -70,20 +70,25 @@ export async function sendTestEmailAction(
       return { success: false, message: `Template "${templateId}" not found or is incomplete.` };
     }
     
-    let restaurantName = "Your Restaurant"; // Default
+    let restaurantName = "My Restaurant"; // Default, updated from previous "Your Restaurant"
     try {
         const settings: CombinedSettings | null = await getRestaurantSettings();
         if (settings?.restaurantName) {
             restaurantName = settings.restaurantName;
         }
     } catch (settingsError) {
-        console.warn("[sendTestEmailAction] Could not fetch restaurant settings for dummy data. Error:", settingsError);
+        console.warn("[sendTestEmailAction] Could not fetch restaurant settings for dummy data. Using default. Error:", settingsError);
     }
 
     const dummyData = getDummyDataForTemplate(templateId, restaurantName);
 
     const renderedSubject = renderSimpleTemplate(template.subject, dummyData);
     const renderedBody = renderSimpleTemplate(template.body, dummyData);
+
+    if (!renderedSubject.trim() || !renderedBody.trim()) {
+        console.error(`[sendTestEmailAction] Rendered subject or body is empty for templateId: ${templateId}. Subject: "${renderedSubject}", Body (first 100 chars): "${renderedBody.substring(0,100)}..."`);
+        return { success: false, message: `Rendered subject or body for template "${templateId}" became empty after processing placeholders. Please check your template content and placeholders in the admin settings.` };
+    }
 
     const emailInput: SendEmailInput = {
       to: recipientEmail,
@@ -108,3 +113,4 @@ export async function sendTestEmailAction(
     return { success: false, message: `Error sending test email: ${errorMessage}` };
   }
 }
+
