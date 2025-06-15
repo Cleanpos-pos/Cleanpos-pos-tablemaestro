@@ -11,16 +11,17 @@
 import { ai } from '@/ai/genkit'; 
 import { z } from 'genkit'; 
 import type { CombinedSettings } from '@/lib/types';
-import { getRestaurantSettings } from '@/services/settingsService'; 
+import { getPublicRestaurantSettings } from '@/services/settingsService'; // Changed to getPublicRestaurantSettings
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 const DEFAULT_SENDER_EMAIL = 'info@posso.uk'; 
+const DEFAULT_FALLBACK_RESTAURANT_NAME = "My Restaurant"; // Consistent fallback
 
 const SendEmailInputSchema = z.object({
   to: z.string().email().describe('The recipient\'s email address.'),
   subject: z.string().describe('The subject line of the email.'),
   htmlContent: z.string().describe('The HTML content of the email body.'),
-  senderName: z.string().optional().describe('Optional sender name. Defaults to restaurant name from settings or "My Restaurant".'),
+  senderName: z.string().optional().describe(`Optional sender name. Defaults to public restaurant name or "${DEFAULT_FALLBACK_RESTAURANT_NAME}".`),
   senderEmail: z.string().email().optional().describe(`Optional sender email. Defaults to ${DEFAULT_SENDER_EMAIL}. Must be a verified sender in Brevo.`),
 });
 export type SendEmailInput = z.infer<typeof SendEmailInputSchema>;
@@ -35,14 +36,14 @@ export type SendEmailOutput = z.infer<typeof SendEmailOutputSchema>;
 
 async function getDynamicSenderInfo(): Promise<{name: string, email: string}> {
     try {
-        const settings: CombinedSettings | null = await getRestaurantSettings();
-        // Use "My Restaurant" as a fallback, consistent with other parts of the app
-        const restaurantName = settings?.restaurantName || "My Restaurant"; 
+        // Use public settings for the sender name to ensure consistency for all emails.
+        const settings: CombinedSettings | null = await getPublicRestaurantSettings();
+        const restaurantName = settings?.restaurantName || DEFAULT_FALLBACK_RESTAURANT_NAME;
         
         return { name: restaurantName, email: DEFAULT_SENDER_EMAIL };
     } catch (error) {
-        console.warn("[sendEmailFlow] Could not fetch restaurant settings for sender name, using default. Error:", error);
-        return { name: "My Restaurant", email: DEFAULT_SENDER_EMAIL };
+        console.warn("[sendEmailFlow] Could not fetch public restaurant settings for sender name, using default. Error:", error);
+        return { name: DEFAULT_FALLBACK_RESTAURANT_NAME, email: DEFAULT_SENDER_EMAIL };
     }
 }
 
