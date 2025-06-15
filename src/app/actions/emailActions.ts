@@ -10,7 +10,7 @@ import {
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
 import type { CombinedSettings } from '@/lib/types';
-import { getPublicRestaurantSettings } from '@/services/settingsService'; // Changed import
+import { getRestaurantSettings } from '@/services/settingsService'; // Changed to getRestaurantSettings
 import { format } from 'date-fns';
 
 interface SendTestEmailResult {
@@ -18,18 +18,19 @@ interface SendTestEmailResult {
   message: string;
 }
 
-// Uses getPublicRestaurantSettings for consistency in test emails
+// Uses getRestaurantSettings for consistency in test emails for the logged-in admin
 async function getDummyDataForTemplate(templateId: string): Promise<Record<string, any>> {
   let restaurantName = "My Restaurant"; // Fallback
   try {
-    const settings: CombinedSettings | null = await getPublicRestaurantSettings();
+    // Fetch settings for the currently authenticated user (admin sending the test)
+    const settings: CombinedSettings | null = await getRestaurantSettings(); 
     if (settings?.restaurantName) {
         restaurantName = settings.restaurantName;
     } else {
-        console.warn("[sendTestEmailAction] Public restaurant name not found or null, using fallback 'My Restaurant' for dummy data.");
+        console.warn("[sendTestEmailAction] Current user's restaurant name not found or null, using fallback 'My Restaurant' for dummy data.");
     }
   } catch (settingsError) {
-      console.warn("[sendTestEmailAction] Could not fetch public restaurant settings for dummy data. Using fallback. Error:", settingsError);
+      console.warn("[sendTestEmailAction] Could not fetch current user's restaurant settings for dummy data. Using fallback. Error:", settingsError);
   }
 
   const commonData = {
@@ -83,7 +84,7 @@ export async function sendTestEmailAction(
       return { success: false, message: `Template "${templateId}" not found or is incomplete.` };
     }
     
-    const dummyData = await getDummyDataForTemplate(templateId); // Now async
+    const dummyData = await getDummyDataForTemplate(templateId); 
 
     const renderedSubject = renderSimpleTemplate(template.subject, dummyData);
     const renderedBody = renderSimpleTemplate(template.body, dummyData);
@@ -98,7 +99,8 @@ export async function sendTestEmailAction(
       subject: renderedSubject,
       htmlContent: renderedBody,
       // senderName and senderEmail will use defaults from sendEmailFlow if not specified
-      // (sendEmailFlow now also uses getPublicRestaurantSettings for senderName)
+      // sendEmailFlow's getDynamicSenderInfo uses getPublicRestaurantSettings for the sender name.
+      // For test emails, the body correctly uses the admin's specific restaurant name.
     };
 
     console.log(`[sendTestEmailAction] Calling sendEmail flow with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "..."});
