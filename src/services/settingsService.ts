@@ -19,7 +19,7 @@ const defaultCombinedSettings: CombinedSettings = {
   maxGuestsPerBooking: 10,
   timeSlotIntervalMinutes: 30,
   bookingLeadTimeDays: 90,
-  restaurantName: "My Restaurant", 
+  restaurantName: "My Restaurant",
   restaurantImageUrl: null,
   restaurantGalleryUrls: Array(6).fill(null),
 };
@@ -42,19 +42,19 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
     console.error("[settingsService] No authenticated user found. Cannot save settings.");
     throw new Error("User not authenticated. Cannot save settings.");
   }
-  const settingsDocId = user.uid; 
+  const settingsDocId = user.uid;
   const settingsRef = doc(db, SETTINGS_COLLECTION, settingsDocId);
   console.log(`[settingsService] Saving settings for user ${user.uid} to doc ID ${settingsDocId}`);
 
   try {
     const dataToSave: CombinedSettings = {
-      ...defaultCombinedSettings, 
-      ...settings 
+      ...defaultCombinedSettings,
+      ...settings
     };
-    
+
     dataToSave.restaurantName = settings.restaurantName ?? null;
     dataToSave.restaurantImageUrl = settings.restaurantImageUrl ?? null;
-    
+
     if (settings.restaurantGalleryUrls && Array.isArray(settings.restaurantGalleryUrls)) {
       dataToSave.restaurantGalleryUrls = settings.restaurantGalleryUrls.map(url => url ?? null);
     } else {
@@ -71,14 +71,14 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
         if (dataToSave[key] === undefined) {
             (dataToSave as any)[key] = (defaultCombinedSettings as any)[key];
              if (key === 'restaurantName' || key === 'restaurantImageUrl') {
-                (dataToSave as any)[key] = null; 
+                (dataToSave as any)[key] = null;
             }
             if (key === 'restaurantGalleryUrls' && !(dataToSave[key])) {
                 (dataToSave as any)[key] = Array(6).fill(null);
             }
         }
     });
-    
+
     await setDoc(settingsRef, {
       ...dataToSave,
       updatedAt: serverTimestamp(),
@@ -105,44 +105,34 @@ const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings>
         ...data,
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
-        restaurantGalleryUrls: (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls) 
-                                ? data.restaurantGalleryUrls 
-                                : defaultCombinedSettings.restaurantGalleryUrls
+        restaurantGalleryUrls: (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls)
+                                ? data.restaurantGalleryUrls
+                                : defaultCombinedSettings.restaurantGalleryUrls!
                               ).map((url: string | null | undefined) => url ?? null).slice(0,6),
       };
       if (mergedSettings.restaurantGalleryUrls.length < 6) {
         mergedSettings.restaurantGalleryUrls = [
-            ...mergedSettings.restaurantGalleryUrls, 
+            ...mergedSettings.restaurantGalleryUrls,
             ...Array(6 - mergedSettings.restaurantGalleryUrls.length).fill(null)
         ];
       }
       return mergedSettings;
     } else {
-      console.warn(`[settingsService] No settings document found at: ${settingsPath}. Returning defaults.`);
-      // For specific user settings, if not found, return defaults.
-      // For PUBLIC_RESTAURANT_ID, if not found, it implies it's not configured, so a default "not configured" name is fine.
-      const isPublicCall = settingsDocId === PUBLIC_RESTAURANT_ID;
-      return { 
-        ...defaultCombinedSettings, 
-        restaurantName: isPublicCall ? "Restaurant Not Configured" : defaultCombinedSettings.restaurantName 
-      };
+      console.warn(`[settingsService] No settings document found at: ${settingsPath}. Returning general defaults.`);
+      return { ...defaultCombinedSettings }; // Always return general defaults if doc is missing
     }
   } catch (error) {
     console.error(`[settingsService] Error fetching restaurant settings from ${settingsPath}: `, error);
-    const isPublicCall = settingsDocId === PUBLIC_RESTAURANT_ID;
-    return { 
-        ...defaultCombinedSettings, 
-        restaurantName: isPublicCall ? "Error Loading Restaurant Info" : defaultCombinedSettings.restaurantName 
-    };
+    // Fallback to general defaults on error
+    return { ...defaultCombinedSettings };
   }
 };
 
 export const getRestaurantSettings = async (): Promise<CombinedSettings> => {
   const user = auth.currentUser;
   if (!user) {
-    console.warn("[settingsService] No authenticated user for getRestaurantSettings. This might happen in server actions. Returning generic default settings.");
-    // Return the actual default settings, not a UI message like "Please Log In"
-    return { ...defaultCombinedSettings }; 
+    console.warn("[settingsService] No authenticated user for getRestaurantSettings. Returning general default settings.");
+    return { ...defaultCombinedSettings };
   }
   return getSettingsById(user.uid);
 };
@@ -164,7 +154,7 @@ const getScheduleById = async (settingsDocId: string): Promise<RestaurantSchedul
       if (data.schedule && Array.isArray(data.schedule)) {
         const sanitizedSchedule = (data.schedule as DaySchedule[]).map(day => ({
           ...day,
-          timeSlots: day.timeSlots && Array.isArray(day.timeSlots) ? day.timeSlots : [] 
+          timeSlots: day.timeSlots && Array.isArray(day.timeSlots) ? day.timeSlots : []
         }));
         return sanitizedSchedule;
       }
@@ -187,14 +177,14 @@ export const saveRestaurantSchedule = async (schedule: RestaurantSchedule): Prom
     console.error("[settingsService] No authenticated user found. Cannot save schedule.");
     throw new Error("User not authenticated. Cannot save schedule.");
   }
-  const settingsDocId = user.uid; 
+  const settingsDocId = user.uid;
   const settingsRef = doc(db, SETTINGS_COLLECTION, settingsDocId);
   console.log(`[settingsService] Saving schedule for user ${user.uid} to doc ID ${settingsDocId}`);
 
   try {
     const scheduleToSave = schedule.map(day => ({
       ...day,
-      timeSlots: day.timeSlots && Array.isArray(day.timeSlots) ? day.timeSlots : [] 
+      timeSlots: day.timeSlots && Array.isArray(day.timeSlots) ? day.timeSlots : []
     }));
     await setDoc(settingsRef, {
       schedule: scheduleToSave,
@@ -211,7 +201,7 @@ export const getRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
   const user = auth.currentUser;
   if (!user) {
     console.warn("[settingsService] No authenticated user for getRestaurantSchedule. Returning default schedule.");
-    return [...defaultScheduleData]; 
+    return [...defaultScheduleData];
   }
   return getScheduleById(user.uid);
 };

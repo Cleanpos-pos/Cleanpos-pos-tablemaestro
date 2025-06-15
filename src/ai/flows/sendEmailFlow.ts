@@ -8,13 +8,13 @@
  * - SendEmailOutput - The return type for the sendEmailFlow.
  */
 
-import { ai } from '@/ai/genkit'; 
-import { z } from 'genkit'; 
+import { ai } from '@/ai/genkit';
+import { z } from 'genkit';
 import type { CombinedSettings } from '@/lib/types';
 import { getPublicRestaurantSettings } from '@/services/settingsService'; // Changed to getPublicRestaurantSettings
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
-const DEFAULT_SENDER_EMAIL = 'info@posso.uk'; 
+const DEFAULT_SENDER_EMAIL = 'info@posso.uk';
 const DEFAULT_FALLBACK_RESTAURANT_NAME = "My Restaurant"; // Consistent fallback
 
 const SendEmailInputSchema = z.object({
@@ -39,7 +39,7 @@ async function getDynamicSenderInfo(): Promise<{name: string, email: string}> {
         // Use public settings for the sender name to ensure consistency for all emails.
         const settings: CombinedSettings | null = await getPublicRestaurantSettings();
         const restaurantName = settings?.restaurantName || DEFAULT_FALLBACK_RESTAURANT_NAME;
-        
+
         return { name: restaurantName, email: DEFAULT_SENDER_EMAIL };
     } catch (error) {
         console.warn("[sendEmailFlow] Could not fetch public restaurant settings for sender name, using default. Error:", error);
@@ -81,7 +81,7 @@ const sendEmailFlow = ai.defineFlow(
       console.log(`[sendEmailFlow] Subject: ${payload.subject.substring(0, 100)}...`);
       console.log(`[sendEmailFlow] Sender: ${payload.sender.name} <${payload.sender.email}>`);
       console.log(`[sendEmailFlow] HTML Content (first 100 chars): ${payload.htmlContent.substring(0, 100)}...`);
-      
+
       const response = await fetch(BREVO_API_URL, {
         method: 'POST',
         headers: {
