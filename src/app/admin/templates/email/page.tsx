@@ -314,7 +314,7 @@ export default function EmailTemplatePage() {
                     Edit: {template.label}
                   </CardTitle>
                   <CardDescription className="font-body">
-                    {template.description} Ensure your Brevo API key is in `.env` and sender email is configured in Brevo and in `sendEmailFlow.ts`.
+                    {template.description}
                   </CardDescription>
                 </CardHeader>
                 <Form {...form}>
@@ -431,8 +431,9 @@ export default function EmailTemplatePage() {
                           <Info className="h-5 w-5 text-blue-600 mr-2 shrink-0 mt-0.5" />
                           <p className="text-xs font-body text-blue-700">
                               The "Send Test Email" feature uses the **last saved version** of the template.
-                              Ensure your Brevo API key is correctly set in the `.env` file (requires server restart after adding/changing).
+                              Ensure your `GEMINI_API_KEY` (for Genkit Google AI plugin) and `BREVO_API_KEY` (for Brevo email service) are correctly set in the `.env` file.
                               The sender email is currently configured in `sendEmailFlow.ts` as 'info@posso.uk'; ensure this is a verified sender in your Brevo account.
+                              A server restart might be required after adding/changing API keys in `.env`.
                           </p>
                       </div>
                   </div>
