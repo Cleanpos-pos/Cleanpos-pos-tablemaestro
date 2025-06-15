@@ -13,13 +13,13 @@ import { getDoc, doc } from "firebase/firestore";
 import { db, auth } from "@/config/firebase";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  sendNoAvailabilityEmailForBookingAction, 
+import {
+  sendNoAvailabilityEmailForBookingAction,
   sendWaitingListEmailForBookingAction,
-  sendBookingConfirmationEmailAction, // New action
-  type BookingEmailParams 
+  sendBookingConfirmationEmailAction,
+  type BookingEmailParams
 } from "@/app/actions/emailActions";
-import { getRestaurantSettings } from "@/services/settingsService"; // Changed back to getRestaurantSettings for admin's specific name
+import { getRestaurantSettings } from "@/services/settingsService";
 
 export default function EditBookingPage() {
   const params = useParams();
@@ -28,21 +28,22 @@ export default function EditBookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant"); 
+  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant");
   const { toast } = useToast();
 
-  const fetchAdminRestaurantNameInternal = useCallback(async (userId: string) => {
+  const fetchAdminRestaurantName = useCallback(async (userId: string) => {
     try {
-      const settings = await getRestaurantSettings(); // Fetches for current auth user
-      setAdminRestaurantName(settings?.restaurantName || "My Restaurant"); 
+      // getRestaurantSettings implicitly uses auth.currentUser.uid
+      const settings = await getRestaurantSettings();
+      setAdminRestaurantName(settings?.restaurantName || "My Restaurant");
     } catch (err) {
       console.error("[EditBookingPage] Error fetching admin's restaurant name:", err);
-      setAdminRestaurantName("My Restaurant"); 
+      setAdminRestaurantName("My Restaurant"); // Fallback
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true); 
+    setIsLoading(true);
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user && bookingId) {
         const fetchData = async () => {
@@ -50,6 +51,7 @@ export default function EditBookingPage() {
           try {
             const bookingRef = doc(db, "bookings", bookingId);
             const docSnap = await getDoc(bookingRef);
+
             if (docSnap.exists()) {
               const data = docSnap.data();
               setBooking({
@@ -62,11 +64,11 @@ export default function EditBookingPage() {
               setError("Booking not found.");
               setBooking(null);
             }
-            await fetchAdminRestaurantNameInternal(user.uid);
+            await fetchAdminRestaurantName(user.uid);
           } catch (err) {
             console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
-            setError(err instanceof Error ? err.message : "An unknown error occurred.");
-            setAdminRestaurantName("My Restaurant"); 
+            setError(err instanceof Error ? err.message : "An unknown error occurred while fetching data.");
+            setAdminRestaurantName("My Restaurant");
             setBooking(null);
           } finally {
             setIsLoading(false);
@@ -76,7 +78,7 @@ export default function EditBookingPage() {
       } else if (!user && bookingId) {
         setIsLoading(false);
         setError("User not authenticated. Cannot load booking details or admin info.");
-        setAdminRestaurantName("My Restaurant"); 
+        setAdminRestaurantName("My Restaurant");
         setBooking(null);
       } else if (!bookingId) {
         setIsLoading(false);
@@ -84,12 +86,12 @@ export default function EditBookingPage() {
         setAdminRestaurantName("My Restaurant");
         setBooking(null);
       } else {
-         setIsLoading(false);
+        setIsLoading(false);
       }
     });
 
-    return () => unsubscribe(); 
-  }, [bookingId, fetchAdminRestaurantNameInternal]);
+    return () => unsubscribe();
+  }, [bookingId, fetchAdminRestaurantName]);
 
 
   const handleSendBookingRelatedEmail = async (type: 'no-availability' | 'waiting-list' | 'confirmation') => {
@@ -114,13 +116,13 @@ export default function EditBookingPage() {
     const emailParams: BookingEmailParams = {
       recipientEmail: booking.guestEmail,
       adminUserUID: auth.currentUser.uid,
-      adminRestaurantName: adminRestaurantName, 
+      adminRestaurantName: adminRestaurantName,
       bookingDetails: {
         guestName: booking.guestName,
-        date: booking.date, 
+        date: booking.date,
         time: booking.time,
         partySize: booking.partySize,
-        notes: booking.notes, // Include notes for confirmation email
+        notes: booking.notes,
       },
     };
 
@@ -133,7 +135,6 @@ export default function EditBookingPage() {
       } else if (type === 'confirmation') {
         result = await sendBookingConfirmationEmailAction(emailParams);
       }
-
 
       if (result && result.success) {
         toast({ title: "Email Sent", description: result.message });
@@ -161,7 +162,7 @@ export default function EditBookingPage() {
         </Button>
         <h1 className="text-3xl font-headline text-foreground">Edit Booking</h1>
       </div>
-      
+
       <Card className="shadow-lg rounded-xl">
         <CardHeader>
           <CardTitle className="font-headline">Modify Reservation</CardTitle>
@@ -185,27 +186,27 @@ export default function EditBookingPage() {
             <>
               <AdminBookingForm existingBooking={booking} />
               <CardFooter className="mt-6 border-t pt-6 flex flex-col sm:flex-row gap-3 justify-start">
-                 <Button 
-                  variant="outline" 
-                  onClick={() => handleSendBookingRelatedEmail('confirmation')} 
+                 <Button
+                  variant="outline"
+                  onClick={() => handleSendBookingRelatedEmail('confirmation')}
                   disabled={isSendingEmail || !booking.guestEmail}
                   className="font-body btn-subtle-animate"
                 >
                   {isSendingEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                   Send Confirmation
                 </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => handleSendBookingRelatedEmail('no-availability')} 
+                <Button
+                  variant="outline"
+                  onClick={() => handleSendBookingRelatedEmail('no-availability')}
                   disabled={isSendingEmail || !booking.guestEmail}
                   className="font-body btn-subtle-animate"
                 >
                   {isSendingEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailWarning className="mr-2 h-4 w-4" />}
                   Send 'No Availability'
                 </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => handleSendBookingRelatedEmail('waiting-list')} 
+                <Button
+                  variant="outline"
+                  onClick={() => handleSendBookingRelatedEmail('waiting-list')}
                   disabled={isSendingEmail || !booking.guestEmail}
                   className="font-body btn-subtle-animate"
                 >
@@ -219,7 +220,7 @@ export default function EditBookingPage() {
                     <AlertTitle className="font-headline text-yellow-800">Guest Email Missing</AlertTitle>
                     <AlertDescription className="font-body text-yellow-700">
                         This booking does not have a guest email address. Email notifications cannot be sent.
-                    </Description>
+                    </AlertDescription>
                 </Alert>
               )}
             </>
