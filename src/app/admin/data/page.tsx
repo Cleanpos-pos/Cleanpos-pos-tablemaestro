@@ -267,6 +267,13 @@ export default function DataAnalyticsPage() {
         <h2 className="mt-4 text-xl font-headline text-destructive">Failed to Load Data</h2>
         <p className="mt-2 font-body text-center text-muted-foreground">{error}</p>
         <p className="mt-1 font-body text-center text-muted-foreground">Please try refreshing the page or check back later.</p>
+        {error.toLowerCase().includes("index") && (
+          <p className="mt-2 font-body text-center text-sm text-orange-600">
+            If this error mentions an 'index', it might be building in Firestore.
+            Please wait a few minutes and refresh. You can check index status in the
+            Firebase Console (Firestore Database &gt; Indexes).
+          </p>
+        )}
       </div>
     );
   }
