@@ -93,16 +93,24 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
 
 const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings> => {
   const settingsPath = `${SETTINGS_COLLECTION}/${settingsDocId}`;
-  console.log(`[settingsService] Fetching settings from doc ID ${settingsDocId}`);
+  
+  if (settingsDocId === PUBLIC_RESTAURANT_ID) {
+    console.log(`[settingsService] Attempting to fetch PUBLIC restaurant settings from doc ID: ${settingsDocId} (Path: ${settingsPath})`);
+  } else {
+    console.log(`[settingsService] Fetching settings for user/doc ID: ${settingsDocId} (Path: ${settingsPath})`);
+  }
+
   try {
     const settingsRef = doc(db, SETTINGS_COLLECTION, settingsDocId);
     const docSnap = await getDoc(settingsRef);
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      // Start with general defaults, then overlay with fetched data
       const mergedSettings: CombinedSettings = {
         ...defaultCombinedSettings,
         ...data,
+        // Ensure critical fields like restaurantName fall back to defaults if null/undefined in DB
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
         restaurantGalleryUrls: (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls)
@@ -110,21 +118,32 @@ const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings>
                                 : defaultCombinedSettings.restaurantGalleryUrls!
                               ).map((url: string | null | undefined) => url ?? null).slice(0,6),
       };
+      // Ensure gallery always has 6 slots, filling with null if necessary
       if (mergedSettings.restaurantGalleryUrls.length < 6) {
         mergedSettings.restaurantGalleryUrls = [
             ...mergedSettings.restaurantGalleryUrls,
             ...Array(6 - mergedSettings.restaurantGalleryUrls.length).fill(null)
         ];
       }
+
+      if (settingsDocId === PUBLIC_RESTAURANT_ID) {
+        console.log(`[settingsService] Found PUBLIC restaurant settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
+      }
       return mergedSettings;
     } else {
-      console.warn(`[settingsService] No settings document found at: ${settingsPath}. Returning general defaults.`);
-      return { ...defaultCombinedSettings }; // Always return general defaults if doc is missing
+      if (settingsDocId === PUBLIC_RESTAURANT_ID) {
+        console.warn(`[settingsService] PUBLIC restaurant settings document (${settingsPath}) NOT FOUND. Returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}"). You should create this document and populate it with your public-facing restaurant details (e.g., name, images).`);
+      } else {
+        console.warn(`[settingsService] Settings document NOT FOUND for ${settingsPath}. Returning default settings.`);
+      }
+      return { ...defaultCombinedSettings }; // Return a copy of defaults
     }
   } catch (error) {
     console.error(`[settingsService] Error fetching restaurant settings from ${settingsPath}: `, error);
-    // Fallback to general defaults on error
-    return { ...defaultCombinedSettings };
+    if (settingsDocId === PUBLIC_RESTAURANT_ID) {
+      console.warn(`[settingsService] Error fetching PUBLIC restaurant settings. Returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}").`);
+    }
+    return { ...defaultCombinedSettings }; // Return a copy of defaults on error
   }
 };
 
@@ -132,6 +151,8 @@ export const getRestaurantSettings = async (): Promise<CombinedSettings> => {
   const user = auth.currentUser;
   if (!user) {
     console.warn("[settingsService] No authenticated user for getRestaurantSettings. Returning general default settings.");
+    // For user-specific settings, returning defaults might be okay if the user is not logged in,
+    // but if they are logged in and the doc is missing, getSettingsById handles that.
     return { ...defaultCombinedSettings };
   }
   return getSettingsById(user.uid);
