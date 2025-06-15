@@ -23,51 +23,77 @@ export default function EditBookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("Your Restaurant");
+  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant"); // Initial fallback
   const { toast } = useToast();
 
-  const fetchAdminRestaurantName = useCallback(async () => {
-    if (auth.currentUser) {
-      try {
-        const settings = await getSettingsById(auth.currentUser.uid);
-        setAdminRestaurantName(settings?.restaurantName || "Your Restaurant");
-      } catch (err) {
-        console.warn("Could not fetch admin's restaurant name for edit booking page.", err);
-        setAdminRestaurantName("Your Restaurant"); // Fallback
-      }
+  const fetchAdminRestaurantNameInternal = useCallback(async (userId: string) => {
+    try {
+      const settings = await getSettingsById(userId);
+      // getSettingsById should guarantee settings and settings.restaurantName are valid strings
+      setAdminRestaurantName(settings.restaurantName); 
+    } catch (err) {
+      console.error("[EditBookingPage] Error fetching admin's restaurant name:", err);
+      setAdminRestaurantName("My Restaurant"); // Consistent fallback on error
     }
   }, []);
 
   useEffect(() => {
-    if (bookingId) {
-      const fetchBooking = async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-          const bookingRef = doc(db, "bookings", bookingId);
-          const docSnap = await getDoc(bookingRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setBooking({ 
-              id: docSnap.id,
-              ...data,
-              date: data.date, 
-              createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-            } as Booking);
-          } else {
-            setError("Booking not found.");
+    setIsLoading(true); // Set loading true at the start of the effect
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user && bookingId) {
+        const fetchData = async () => {
+          setError(null);
+          try {
+            // Fetch booking
+            const bookingRef = doc(db, "bookings", bookingId);
+            const docSnap = await getDoc(bookingRef);
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setBooking({
+                id: docSnap.id,
+                ...data,
+                date: data.date,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+              } as Booking);
+            } else {
+              setError("Booking not found.");
+              setBooking(null);
+            }
+
+            // Fetch admin restaurant name (now that user is confirmed)
+            await fetchAdminRestaurantNameInternal(user.uid);
+
+          } catch (err) {
+            console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
+            setError(err instanceof Error ? err.message : "An unknown error occurred.");
+            setAdminRestaurantName("My Restaurant"); // Fallback on error
+            setBooking(null);
+          } finally {
+            setIsLoading(false);
           }
-        } catch (err) {
-          console.error("Failed to fetch booking:", err);
-          setError(err instanceof Error ? err.message : "An unknown error occurred.");
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchBooking();
-      fetchAdminRestaurantName();
-    }
-  }, [bookingId, fetchAdminRestaurantName]);
+        };
+        fetchData();
+      } else if (!user && bookingId) {
+        // Booking ID exists, but user logged out or auth state changed to null
+        setIsLoading(false);
+        setError("User not authenticated. Cannot load booking details or admin info.");
+        setAdminRestaurantName("My Restaurant"); // Reset/fallback
+        setBooking(null);
+      } else if (!bookingId) {
+        // No booking ID
+        setIsLoading(false);
+        setError("No booking ID provided.");
+        setAdminRestaurantName("My Restaurant");
+        setBooking(null);
+      } else {
+        // User is null and no bookingId (less likely path if component mounts with bookingId)
+         setIsLoading(false);
+      }
+    });
+
+    return () => unsubscribe(); // Cleanup the auth listener
+  }, [bookingId, fetchAdminRestaurantNameInternal]);
+
 
   const handleSendBookingRelatedEmail = async (type: 'no-availability' | 'waiting-list') => {
     if (!booking || !booking.guestEmail) {
@@ -82,13 +108,14 @@ export default function EditBookingPage() {
     setIsSendingEmail(true);
     toast({ title: "Sending Email...", description: `Preparing to send ${type === 'no-availability' ? 'No Availability' : 'Waiting List'} email.`});
 
+    // adminRestaurantName state should now be correctly set by fetchAdminRestaurantNameInternal
     const params = {
       recipientEmail: booking.guestEmail,
       adminUserUID: auth.currentUser.uid,
-      adminRestaurantName: adminRestaurantName,
+      adminRestaurantName: adminRestaurantName, // Uses the state variable
       bookingDetails: {
         guestName: booking.guestName,
-        date: booking.date, // This is already YYYY-MM-DD string from Booking type
+        date: booking.date, 
         time: booking.time,
         partySize: booking.partySize,
       },
