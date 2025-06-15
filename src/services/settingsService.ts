@@ -7,6 +7,7 @@ import {
   setDoc,
   getDoc,
   serverTimestamp,
+  Timestamp,
 } from 'firebase/firestore';
 
 const SETTINGS_COLLECTION = 'restaurantConfig';
@@ -18,7 +19,7 @@ const defaultCombinedSettings: CombinedSettings = {
   maxGuestsPerBooking: 10,
   timeSlotIntervalMinutes: 30,
   bookingLeadTimeDays: 90,
-  restaurantName: "Our Restaurant", 
+  restaurantName: "My Restaurant", 
   restaurantImageUrl: null,
   restaurantGalleryUrls: Array(6).fill(null),
 };
@@ -118,19 +119,30 @@ const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings>
       return mergedSettings;
     } else {
       console.warn(`[settingsService] No settings document found at: ${settingsPath}. Returning defaults.`);
-      return { ...defaultCombinedSettings, restaurantName: "Restaurant Not Configured" };
+      // For specific user settings, if not found, return defaults.
+      // For PUBLIC_RESTAURANT_ID, if not found, it implies it's not configured, so a default "not configured" name is fine.
+      const isPublicCall = settingsDocId === PUBLIC_RESTAURANT_ID;
+      return { 
+        ...defaultCombinedSettings, 
+        restaurantName: isPublicCall ? "Restaurant Not Configured" : defaultCombinedSettings.restaurantName 
+      };
     }
   } catch (error) {
     console.error(`[settingsService] Error fetching restaurant settings from ${settingsPath}: `, error);
-    return { ...defaultCombinedSettings, restaurantName: "Error Loading Settings" };
+    const isPublicCall = settingsDocId === PUBLIC_RESTAURANT_ID;
+    return { 
+        ...defaultCombinedSettings, 
+        restaurantName: isPublicCall ? "Error Loading Restaurant Info" : defaultCombinedSettings.restaurantName 
+    };
   }
 };
 
 export const getRestaurantSettings = async (): Promise<CombinedSettings> => {
   const user = auth.currentUser;
   if (!user) {
-    console.warn("[settingsService] No authenticated user for getRestaurantSettings. Returning default settings template.");
-    return { ...defaultCombinedSettings, restaurantName: "Please Log In" };
+    console.warn("[settingsService] No authenticated user for getRestaurantSettings. This might happen in server actions. Returning generic default settings.");
+    // Return the actual default settings, not a UI message like "Please Log In"
+    return { ...defaultCombinedSettings }; 
   }
   return getSettingsById(user.uid);
 };
@@ -207,3 +219,4 @@ export const getRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
 export const getPublicRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
   return getScheduleById(PUBLIC_RESTAURANT_ID);
 };
+
