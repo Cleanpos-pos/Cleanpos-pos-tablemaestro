@@ -7,12 +7,12 @@ import {
     BOOKING_ACCEPTED_TEMPLATE_ID,
     NO_AVAILABILITY_TEMPLATE_ID,
     WAITING_LIST_TEMPLATE_ID,
-    defaultBookingAcceptedPlaceholders, // For sendTestEmailAction
+    defaultBookingAcceptedPlaceholders, 
     defaultNoAvailabilityPlaceholders,
     defaultWaitingListPlaceholders
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
-import { getSettingsById } from '@/services/settingsService'; // For fetching specific admin's restaurant name
+// getSettingsById is removed as adminRestaurantName is passed directly
 import { format, parseISO, isValid } from 'date-fns';
 
 interface ActionResult {
@@ -23,12 +23,12 @@ interface ActionResult {
 // Dummy data generator for the main Email Templates admin page (test sends)
 function getDummyDataForTemplate(
   templateId: string, 
-  adminProvidedRestaurantName: string // Directly use the passed restaurant name
+  adminRestaurantName: string 
 ): Record<string, any> {
   
   const commonData = {
     guestName: 'Test Guest',
-    restaurantName: adminProvidedRestaurantName, 
+    restaurantName: adminRestaurantName, 
   };
   const currentDate = new Date();
   let bookingDate = 'N/A';
@@ -56,10 +56,10 @@ function getDummyDataForTemplate(
     case WAITING_LIST_TEMPLATE_ID:
       return {
         ...commonData,
-        requestedDate: bookingDate, // Re-using for waiting list context
-        bookingDate: bookingDate, // For consistency if template uses bookingDate
-        requestedTime: '07:30 PM', // Re-using for waiting list context
-        bookingTime: '07:30 PM',   // For consistency if template uses bookingTime
+        requestedDate: bookingDate, 
+        bookingDate: bookingDate, 
+        requestedTime: '07:30 PM', 
+        bookingTime: '07:30 PM',   
         partySize: 3,
         estimatedWaitTime: '30-45 minutes',
       };
@@ -128,19 +128,76 @@ export async function sendTestEmailAction(
 }
 
 
-// --- New Actions for Edit Booking Page ---
+// --- Actions for Edit Booking Page ---
 
-interface BookingEmailParams {
+export interface BookingEmailParams {
   recipientEmail: string;
-  adminUserUID: string;
+  adminUserUID: string; // Still useful for logging or future admin-specific logic
   adminRestaurantName: string; // Passed from client
   bookingDetails: {
     guestName: string;
     date: string; // YYYY-MM-DD string
     time: string; // HH:MM
     partySize: number;
+    notes?: string; // Added for confirmation email
   };
 }
+
+export async function sendBookingConfirmationEmailAction(params: BookingEmailParams): Promise<ActionResult> {
+  const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
+  const templateId = BOOKING_ACCEPTED_TEMPLATE_ID;
+  console.log(`[sendBookingConfirmationEmailAction] Initiated for ${recipientEmail}, admin: ${adminUserUID}, booking guest: ${bookingDetails.guestName}`);
+
+  if (!recipientEmail || !recipientEmail.includes('@')) return { success: false, message: "Invalid recipient email." };
+  if (!adminUserUID) return { success: false, message: "Admin user ID missing." };
+  if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
+
+  try {
+    const template = await getEmailTemplate(templateId); // This fetches template for current admin based on their UID implicitly
+    if (!template || !template.subject || !template.body) {
+      return { success: false, message: `"${templateId}" template not found or incomplete.` };
+    }
+    
+    let formattedDate = 'N/A';
+    if (bookingDetails.date) {
+        try {
+            const parsedDate = parseISO(bookingDetails.date);
+            if (isValid(parsedDate)) {
+                formattedDate = format(parsedDate, 'MMMM d, yyyy');
+            }
+        } catch (e) { console.warn(`Invalid date for Confirmation email: ${bookingDetails.date}`); }
+    }
+
+    const templateData = {
+      guestName: bookingDetails.guestName,
+      restaurantName: adminRestaurantName,
+      bookingDate: formattedDate,
+      bookingTime: bookingDetails.time,
+      partySize: bookingDetails.partySize,
+      notes: bookingDetails.notes || "", // Include notes
+    };
+
+    const subject = renderSimpleTemplate(template.subject, templateData);
+    const body = renderSimpleTemplate(template.body, templateData);
+
+    if (!subject.trim() || !body.trim()) {
+      return { success: false, message: "Rendered subject or body is empty for confirmation. Check template and data." };
+    }
+
+    const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
+    const result = await sendEmail(emailInput);
+
+    return result.success 
+      ? { success: true, message: `Booking Confirmation email sent to ${recipientEmail}.` }
+      : { success: false, message: `Failed to send Booking Confirmation email: ${result.error || 'Unknown error'}` };
+
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown server error.';
+    console.error(`[sendBookingConfirmationEmailAction] Error:`, error);
+    return { success: false, message: `Error sending email: ${errMsg}` };
+  }
+}
+
 
 export async function sendNoAvailabilityEmailForBookingAction(params: BookingEmailParams): Promise<ActionResult> {
   const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
@@ -225,12 +282,12 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     const templateData = {
       guestName: bookingDetails.guestName,
       restaurantName: adminRestaurantName,
-      requestedDate: formattedDate, // Using booking date as requested date
-      bookingDate: formattedDate,   // For templates that might use {{bookingDate}}
-      requestedTime: bookingDetails.time, // Using booking time as requested time
-      bookingTime: bookingDetails.time,   // For templates that might use {{bookingTime}}
+      requestedDate: formattedDate, 
+      bookingDate: formattedDate,   
+      requestedTime: bookingDetails.time, 
+      bookingTime: bookingDetails.time,   
       partySize: bookingDetails.partySize,
-      estimatedWaitTime: "Please contact us for current wait times.", // Placeholder
+      estimatedWaitTime: "Please contact us for current wait times.", 
     };
 
     const subject = renderSimpleTemplate(template.subject, templateData);

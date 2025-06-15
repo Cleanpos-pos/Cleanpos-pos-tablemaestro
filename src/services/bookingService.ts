@@ -16,14 +16,8 @@ import {
   DocumentData,
   QueryDocumentSnapshot,
   getDoc, // Added getDoc
+  type DocumentSnapshot, // Explicitly import DocumentSnapshot
 } from 'firebase/firestore';
-
-// Imports for email sending
-import { sendEmail, type SendEmailInput } from '@/ai/flows/sendEmailFlow';
-import { getEmailTemplate, BOOKING_ACCEPTED_TEMPLATE_ID } from '@/services/templateService';
-import { renderSimpleTemplate } from '@/lib/templateUtils';
-import { getSettingsById } from '@/services/settingsService';
-import { format as formatDateFns, parseISO } from 'date-fns';
 
 const BOOKINGS_COLLECTION = 'bookings';
 
@@ -50,79 +44,6 @@ const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData> | Document
     ownerUID: data.ownerUID, 
   } as Booking;
 };
-
-
-async function triggerBookingConfirmationEmail(
-  bookingDetails: BookingInput | Booking, 
-  ownerUID: string,
-  bookingIdForLog: string 
-) {
-  if (!bookingDetails.guestEmail) {
-    console.log(`[BookingService][ConfirmationEmail] No guest email for booking ${bookingIdForLog}. Skipping confirmation email.`);
-    return;
-  }
-  if (bookingDetails.status !== 'confirmed') {
-    console.log(`[BookingService][ConfirmationEmail] Booking ${bookingIdForLog} status is not 'confirmed' (it's ${bookingDetails.status}). Skipping confirmation email.`);
-    return;
-  }
-
-  console.log(`[BookingService][ConfirmationEmail] Attempting to send confirmation for booking ${bookingIdForLog} to ${bookingDetails.guestEmail}`);
-
-  try {
-    const ownerSettings = await getSettingsById(ownerUID);
-    const restaurantName = ownerSettings?.restaurantName || "Our Restaurant"; 
-
-    const template = await getEmailTemplate(BOOKING_ACCEPTED_TEMPLATE_ID);
-    if (!template || !template.subject || !template.body) {
-      console.error(`[BookingService][ConfirmationEmail] Booking Accepted template (ID: ${BOOKING_ACCEPTED_TEMPLATE_ID}) not found or incomplete for booking ${bookingIdForLog}.`);
-      return;
-    }
-    
-    let formattedBookingDate = 'N/A';
-    if (bookingDetails.date) {
-        try {
-            // Date is expected to be 'YYYY-MM-DD' string from BookingInput or Booking
-            const parsedDate = parseISO(bookingDetails.date); 
-            formattedBookingDate = formatDateFns(parsedDate, 'MMMM d, yyyy');
-        } catch (e) {
-            console.warn(`[BookingService][ConfirmationEmail] Could not parse date "${bookingDetails.date}" for booking ${bookingIdForLog}. Error: ${e instanceof Error ? e.message : String(e)}. Using "N/A".`);
-        }
-    }
-
-    const templateData = {
-      guestName: bookingDetails.guestName,
-      bookingDate: formattedBookingDate,
-      bookingTime: bookingDetails.time, 
-      partySize: bookingDetails.partySize,
-      restaurantName: restaurantName,
-      notes: bookingDetails.notes || '', 
-    };
-
-    const subject = renderSimpleTemplate(template.subject, templateData);
-    const htmlContent = renderSimpleTemplate(template.body, templateData);
-
-    if (!subject.trim() || !htmlContent.trim()) {
-        console.error(`[BookingService][ConfirmationEmail] Rendered subject or body is empty for booking ${bookingIdForLog} using template ID ${BOOKING_ACCEPTED_TEMPLATE_ID}. Aborting email.`);
-        return;
-    }
-
-    const emailInput: SendEmailInput = {
-      to: bookingDetails.guestEmail,
-      subject,
-      htmlContent,
-      senderName: restaurantName, 
-    };
-
-    const emailResult = await sendEmail(emailInput);
-    if (emailResult.success) {
-      console.log(`[BookingService][ConfirmationEmail] Confirmation email sent successfully for booking ${bookingIdForLog} to ${bookingDetails.guestEmail}. Message ID: ${emailResult.messageId}`);
-    } else {
-      console.error(`[BookingService][ConfirmationEmail] Failed to send confirmation email for booking ${bookingIdForLog}: ${emailResult.error}`);
-    }
-  } catch (error) {
-    console.error(`[BookingService][ConfirmationEmail] Error sending confirmation email for booking ${bookingIdForLog}:`, error);
-  }
-}
 
 
 export const getBookings = async (): Promise<Booking[]> => {
@@ -155,12 +76,7 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
       ownerUID: user.uid, 
       createdAt: serverTimestamp(), 
     });
-
-    if (bookingData.status === 'confirmed') {
-      triggerBookingConfirmationEmail(bookingData, user.uid, docRef.id).catch(err => {
-        console.error(`[BookingService][addBooking] Background confirmation email trigger failed for new booking ${docRef.id}:`, err);
-      });
-    }
+    // Automatic email sending removed
     return docRef.id;
   } catch (error) {
     console.error("Error adding booking: ", error);
@@ -182,18 +98,7 @@ export const updateBookingInFirestore = async (bookingId: string, bookingData: B
         ...bookingData,
         updatedAt: serverTimestamp()
     });
-
-    if (bookingData.status === 'confirmed') {
-      const updatedDocSnap = await getDoc(bookingRef); 
-      if (updatedDocSnap.exists()) {
-        const fullBookingDetailsForEmail = mapDocToBooking(updatedDocSnap); 
-        triggerBookingConfirmationEmail(fullBookingDetailsForEmail, user.uid, bookingId).catch(err => {
-            console.error(`[BookingService][updateBooking] Background confirmation email trigger failed for updated booking ${bookingId}:`, err);
-        });
-      } else {
-         console.warn(`[BookingService][updateBooking] Booking document ${bookingId} not found after update. Cannot send confirmation email.`);
-      }
-    }
+    // Automatic email sending removed
   } catch (error) {
     console.error("Error updating booking: ", error);
     throw error;
@@ -237,6 +142,3 @@ export const getActiveBookingsForTable = async (tableId: string): Promise<Bookin
     throw error;
   }
 };
-
-
-    

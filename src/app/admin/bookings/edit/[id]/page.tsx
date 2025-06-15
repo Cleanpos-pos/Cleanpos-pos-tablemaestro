@@ -3,7 +3,7 @@
 
 import AdminBookingForm from "@/components/admin/AdminBookingForm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, Loader2, AlertCircle, MailWarning, Clock4, Send } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, MailWarning, Clock4, Send, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
@@ -13,8 +13,13 @@ import { getDoc, doc } from "firebase/firestore";
 import { db, auth } from "@/config/firebase";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { sendNoAvailabilityEmailForBookingAction, sendWaitingListEmailForBookingAction } from "@/app/actions/emailActions";
-import { getSettingsById } from "@/services/settingsService";
+import { 
+  sendNoAvailabilityEmailForBookingAction, 
+  sendWaitingListEmailForBookingAction,
+  sendBookingConfirmationEmailAction, // New action
+  type BookingEmailParams 
+} from "@/app/actions/emailActions";
+import { getRestaurantSettings } from "@/services/settingsService"; // Changed back to getRestaurantSettings for admin's specific name
 
 export default function EditBookingPage() {
   const params = useParams();
@@ -23,28 +28,26 @@ export default function EditBookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant"); // Initial fallback
+  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant"); 
   const { toast } = useToast();
 
   const fetchAdminRestaurantNameInternal = useCallback(async (userId: string) => {
     try {
-      const settings = await getSettingsById(userId);
-      // getSettingsById should guarantee settings and settings.restaurantName are valid strings
-      setAdminRestaurantName(settings.restaurantName); 
+      const settings = await getRestaurantSettings(); // Fetches for current auth user
+      setAdminRestaurantName(settings?.restaurantName || "My Restaurant"); 
     } catch (err) {
       console.error("[EditBookingPage] Error fetching admin's restaurant name:", err);
-      setAdminRestaurantName("My Restaurant"); // Consistent fallback on error
+      setAdminRestaurantName("My Restaurant"); 
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true); // Set loading true at the start of the effect
+    setIsLoading(true); 
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user && bookingId) {
         const fetchData = async () => {
           setError(null);
           try {
-            // Fetch booking
             const bookingRef = doc(db, "bookings", bookingId);
             const docSnap = await getDoc(bookingRef);
             if (docSnap.exists()) {
@@ -59,14 +62,11 @@ export default function EditBookingPage() {
               setError("Booking not found.");
               setBooking(null);
             }
-
-            // Fetch admin restaurant name (now that user is confirmed)
             await fetchAdminRestaurantNameInternal(user.uid);
-
           } catch (err) {
             console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
             setError(err instanceof Error ? err.message : "An unknown error occurred.");
-            setAdminRestaurantName("My Restaurant"); // Fallback on error
+            setAdminRestaurantName("My Restaurant"); 
             setBooking(null);
           } finally {
             setIsLoading(false);
@@ -74,28 +74,25 @@ export default function EditBookingPage() {
         };
         fetchData();
       } else if (!user && bookingId) {
-        // Booking ID exists, but user logged out or auth state changed to null
         setIsLoading(false);
         setError("User not authenticated. Cannot load booking details or admin info.");
-        setAdminRestaurantName("My Restaurant"); // Reset/fallback
+        setAdminRestaurantName("My Restaurant"); 
         setBooking(null);
       } else if (!bookingId) {
-        // No booking ID
         setIsLoading(false);
         setError("No booking ID provided.");
         setAdminRestaurantName("My Restaurant");
         setBooking(null);
       } else {
-        // User is null and no bookingId (less likely path if component mounts with bookingId)
          setIsLoading(false);
       }
     });
 
-    return () => unsubscribe(); // Cleanup the auth listener
+    return () => unsubscribe(); 
   }, [bookingId, fetchAdminRestaurantNameInternal]);
 
 
-  const handleSendBookingRelatedEmail = async (type: 'no-availability' | 'waiting-list') => {
+  const handleSendBookingRelatedEmail = async (type: 'no-availability' | 'waiting-list' | 'confirmation') => {
     if (!booking || !booking.guestEmail) {
       toast({ title: "Error", description: "Booking data or guest email is missing.", variant: "destructive" });
       return;
@@ -106,33 +103,44 @@ export default function EditBookingPage() {
     }
 
     setIsSendingEmail(true);
-    toast({ title: "Sending Email...", description: `Preparing to send ${type === 'no-availability' ? 'No Availability' : 'Waiting List'} email.`});
+    let emailTypeDescription = "";
+    switch(type) {
+      case 'no-availability': emailTypeDescription = 'No Availability'; break;
+      case 'waiting-list': emailTypeDescription = 'Waiting List'; break;
+      case 'confirmation': emailTypeDescription = 'Booking Confirmation'; break;
+    }
+    toast({ title: "Sending Email...", description: `Preparing to send ${emailTypeDescription} email.`});
 
-    // adminRestaurantName state should now be correctly set by fetchAdminRestaurantNameInternal
-    const params = {
+    const emailParams: BookingEmailParams = {
       recipientEmail: booking.guestEmail,
       adminUserUID: auth.currentUser.uid,
-      adminRestaurantName: adminRestaurantName, // Uses the state variable
+      adminRestaurantName: adminRestaurantName, 
       bookingDetails: {
         guestName: booking.guestName,
         date: booking.date, 
         time: booking.time,
         partySize: booking.partySize,
+        notes: booking.notes, // Include notes for confirmation email
       },
     };
 
     try {
       let result;
       if (type === 'no-availability') {
-        result = await sendNoAvailabilityEmailForBookingAction(params);
-      } else {
-        result = await sendWaitingListEmailForBookingAction(params);
+        result = await sendNoAvailabilityEmailForBookingAction(emailParams);
+      } else if (type === 'waiting-list') {
+        result = await sendWaitingListEmailForBookingAction(emailParams);
+      } else if (type === 'confirmation') {
+        result = await sendBookingConfirmationEmailAction(emailParams);
       }
 
-      if (result.success) {
+
+      if (result && result.success) {
         toast({ title: "Email Sent", description: result.message });
-      } else {
+      } else if (result) {
         toast({ title: "Email Failed", description: result.message, variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: "Could not determine email sending outcome.", variant: "destructive" });
       }
     } catch (err) {
       console.error(`Error sending ${type} email:`, err);
@@ -177,6 +185,15 @@ export default function EditBookingPage() {
             <>
               <AdminBookingForm existingBooking={booking} />
               <CardFooter className="mt-6 border-t pt-6 flex flex-col sm:flex-row gap-3 justify-start">
+                 <Button 
+                  variant="outline" 
+                  onClick={() => handleSendBookingRelatedEmail('confirmation')} 
+                  disabled={isSendingEmail || !booking.guestEmail}
+                  className="font-body btn-subtle-animate"
+                >
+                  {isSendingEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  Send Confirmation
+                </Button>
                 <Button 
                   variant="outline" 
                   onClick={() => handleSendBookingRelatedEmail('no-availability')} 
@@ -202,7 +219,7 @@ export default function EditBookingPage() {
                     <AlertTitle className="font-headline text-yellow-800">Guest Email Missing</AlertTitle>
                     <AlertDescription className="font-body text-yellow-700">
                         This booking does not have a guest email address. Email notifications cannot be sent.
-                    </AlertDescription>
+                    </Description>
                 </Alert>
               )}
             </>
