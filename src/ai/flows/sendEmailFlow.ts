@@ -20,7 +20,7 @@ const SendEmailInputSchema = z.object({
   to: z.string().email().describe('The recipient\'s email address.'),
   subject: z.string().describe('The subject line of the email.'),
   htmlContent: z.string().describe('The HTML content of the email body.'),
-  senderName: z.string().optional().describe('Optional sender name. Defaults to restaurant name from settings or "Table Maestro".'),
+  senderName: z.string().optional().describe('Optional sender name. Defaults to restaurant name from settings or "My Restaurant".'),
   senderEmail: z.string().email().optional().describe(`Optional sender email. Defaults to ${DEFAULT_SENDER_EMAIL}. Must be a verified sender in Brevo.`),
 });
 export type SendEmailInput = z.infer<typeof SendEmailInputSchema>;
@@ -36,12 +36,13 @@ export type SendEmailOutput = z.infer<typeof SendEmailOutputSchema>;
 async function getDynamicSenderInfo(): Promise<{name: string, email: string}> {
     try {
         const settings: CombinedSettings | null = await getRestaurantSettings();
-        const restaurantName = settings?.restaurantName || "Table Maestro";
+        // Use "My Restaurant" as a fallback, consistent with other parts of the app
+        const restaurantName = settings?.restaurantName || "My Restaurant"; 
         
         return { name: restaurantName, email: DEFAULT_SENDER_EMAIL };
     } catch (error) {
         console.warn("[sendEmailFlow] Could not fetch restaurant settings for sender name, using default. Error:", error);
-        return { name: "Table Maestro", email: DEFAULT_SENDER_EMAIL };
+        return { name: "My Restaurant", email: DEFAULT_SENDER_EMAIL };
     }
 }
 
@@ -73,7 +74,13 @@ const sendEmailFlow = ai.defineFlow(
     };
 
     try {
-      console.log(`[sendEmailFlow] Sending email to: ${input.to} with subject: ${input.subject.substring(0,50)}...`);
+      // Enhanced logging
+      console.log(`[sendEmailFlow] Preparing to send email.`);
+      console.log(`[sendEmailFlow] To: ${payload.to[0].email}`);
+      console.log(`[sendEmailFlow] Subject: ${payload.subject.substring(0, 100)}...`);
+      console.log(`[sendEmailFlow] Sender: ${payload.sender.name} <${payload.sender.email}>`);
+      console.log(`[sendEmailFlow] HTML Content (first 100 chars): ${payload.htmlContent.substring(0, 100)}...`);
+      
       const response = await fetch(BREVO_API_URL, {
         method: 'POST',
         headers: {
@@ -86,7 +93,7 @@ const sendEmailFlow = ai.defineFlow(
 
       if (!response.ok) {
         const errorBody = await response.json();
-        console.error('Brevo API error response:', errorBody);
+        console.error('[sendEmailFlow] Brevo API error response:', errorBody);
         const errorMessage = errorBody?.message || `Brevo API request failed with status ${response.status}`;
         return { success: false, error: errorMessage };
       }
@@ -95,7 +102,7 @@ const sendEmailFlow = ai.defineFlow(
       console.log('[sendEmailFlow] Email sent successfully via Brevo. Result:', result);
       return { success: true, messageId: result.messageId };
     } catch (error) {
-      console.error('Error sending email via Brevo:', error);
+      console.error('[sendEmailFlow] Error sending email via Brevo:', error);
       return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred while sending email.' };
     }
   }
