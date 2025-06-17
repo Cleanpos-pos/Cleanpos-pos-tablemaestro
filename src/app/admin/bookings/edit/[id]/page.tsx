@@ -3,7 +3,7 @@
 
 import AdminBookingForm from "@/components/admin/AdminBookingForm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, Loader2, AlertCircle, MailWarning, Clock4, Send, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, MailWarning, Clock4, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
@@ -33,14 +33,17 @@ export default function EditBookingPage() {
 
   const fetchAdminRestaurantName = useCallback(async (userId: string) => {
     try {
-      // getRestaurantSettings implicitly uses auth.currentUser.uid
+      // getRestaurantSettings implicitly uses auth.currentUser.uid via getSettingsById(user.uid)
+      // It's important that getRestaurantSettings itself correctly handles the case where auth.currentUser might be null
+      // or fetches settings for the given userId if modified to accept one.
+      // For this page, we assume getRestaurantSettings works based on the current auth.currentUser.
       const settings = await getRestaurantSettings();
       setAdminRestaurantName(settings?.restaurantName || "My Restaurant");
     } catch (err) {
       console.error("[EditBookingPage] Error fetching admin's restaurant name:", err);
       setAdminRestaurantName("My Restaurant"); // Fallback
     }
-  }, []);
+  }, []); // Empty dependency array for useCallback as getRestaurantSettings relies on global auth state.
 
   useEffect(() => {
     setIsLoading(true);
@@ -57,14 +60,14 @@ export default function EditBookingPage() {
               setBooking({
                 id: docSnap.id,
                 ...data,
-                date: data.date,
+                date: data.date, // Expects string
                 createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
               } as Booking);
             } else {
               setError("Booking not found.");
               setBooking(null);
             }
-            await fetchAdminRestaurantName(user.uid);
+            await fetchAdminRestaurantName(user.uid); // Pass user.uid for clarity, though fetchAdminRestaurantName uses global auth
           } catch (err) {
             console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
             setError(err instanceof Error ? err.message : "An unknown error occurred while fetching data.");
@@ -85,8 +88,12 @@ export default function EditBookingPage() {
         setError("No booking ID provided.");
         setAdminRestaurantName("My Restaurant");
         setBooking(null);
-      } else {
+      } else { // Handles user is null and no bookingId, or other initial states
         setIsLoading(false);
+        // Potentially set error if user is null and was expected
+        if (!user) {
+            setError("User not authenticated.");
+        }
       }
     });
 
@@ -110,17 +117,22 @@ export default function EditBookingPage() {
       case 'no-availability': emailTypeDescription = 'No Availability'; break;
       case 'waiting-list': emailTypeDescription = 'Waiting List'; break;
       case 'confirmation': emailTypeDescription = 'Booking Confirmation'; break;
+      default:
+        // This case should ideally not be reached if types are handled correctly
+        toast({ title: "Internal Error", description: "Invalid email type specified.", variant: "destructive" });
+        setIsSendingEmail(false);
+        return;
     }
     toast({ title: "Sending Email...", description: `Preparing to send ${emailTypeDescription} email.`});
 
     const emailParams: BookingEmailParams = {
       recipientEmail: booking.guestEmail,
       adminUserUID: auth.currentUser.uid,
-      adminRestaurantName: adminRestaurantName,
+      adminRestaurantName: adminRestaurantName, // Uses state variable
       bookingDetails: {
         guestName: booking.guestName,
-        date: booking.date,
-        time: booking.time,
+        date: booking.date, // Expected YYYY-MM-DD
+        time: booking.time, // Expected HH:MM
         partySize: booking.partySize,
         notes: booking.notes,
       },
@@ -135,13 +147,19 @@ export default function EditBookingPage() {
       } else if (type === 'confirmation') {
         result = await sendBookingConfirmationEmailAction(emailParams);
       }
-
-      if (result && result.success) {
-        toast({ title: "Email Sent", description: result.message });
-      } else if (result) {
-        toast({ title: "Email Failed", description: result.message, variant: "destructive" });
+      // 'result' could be undefined if an invalid type was passed and caught by the default switch case above,
+      // however, the return there should prevent reaching this point.
+      // Adding a check for result to be safe.
+      if (result) {
+        if (result.success) {
+            toast({ title: "Email Sent", description: result.message });
+        } else {
+            toast({ title: "Email Failed", description: result.message, variant: "destructive" });
+        }
       } else {
-        toast({ title: "Error", description: "Could not determine email sending outcome.", variant: "destructive" });
+        // This path implies the email action didn't return a result, which is unexpected
+        // if the type was valid.
+        toast({ title: "Error", description: "Could not determine email sending outcome for a valid type.", variant: "destructive" });
       }
     } catch (err) {
       console.error(`Error sending ${type} email:`, err);
