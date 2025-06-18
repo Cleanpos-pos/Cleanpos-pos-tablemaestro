@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Sidebar,
   SidebarHeader,
@@ -27,8 +27,11 @@ import {
   UserCircle,
   LineChart,
   Table as TableIcon,
-  FileText, // Added icon
+  FileText,
 } from "lucide-react";
+import { auth } from "@/config/firebase";
+import { signOut } from "firebase/auth";
+import { useToast } from "@/hooks/use-toast";
 
 const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -42,7 +45,30 @@ const menuItems = [
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { isMobile } = useSidebar(); 
+  const router = useRouter();
+  const { toast } = useToast();
+  const { isMobile, setOpenMobile } = useSidebar(); 
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
+      });
+      if (isMobile) {
+        setOpenMobile(false); // Close sidebar on mobile after logout
+      }
+      router.push("/admin/login");
+    } catch (error) {
+      console.error("Error signing out: ", error);
+      toast({
+        title: "Logout Failed",
+        description: "An error occurred while trying to log out.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r">
@@ -87,11 +113,13 @@ export default function AdminSidebar() {
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                    <SidebarMenuButton asChild className="font-body" tooltip="Logout">
-                        <Link href="/">
-                            <LogOut className="h-5 w-5" />
-                            <span>Logout</span>
-                        </Link>
+                    <SidebarMenuButton 
+                        onClick={handleLogout} 
+                        className="font-body" 
+                        tooltip="Logout"
+                    >
+                        <LogOut className="h-5 w-5" />
+                        <span>Logout</span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
