@@ -10,6 +10,8 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 
+const SETTINGS_COLLECTION = 'restaurantConfig';
+
 // Default settings, useful for new users or if data is somehow missing
 const defaultCombinedSettings: CombinedSettings = {
   minAdvanceReservationHours: 2,
