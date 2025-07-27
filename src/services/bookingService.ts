@@ -18,6 +18,7 @@ import {
   getDoc, // Added getDoc
   type DocumentSnapshot, // Explicitly import DocumentSnapshot
 } from 'firebase/firestore';
+import { PUBLIC_RESTAURANT_ID } from '@/config/constants';
 
 const BOOKINGS_COLLECTION = 'bookings';
 
@@ -63,17 +64,31 @@ export const getBookings = async (): Promise<Booking[]> => {
   }
 };
 
+export const getBookingById = async (bookingId: string): Promise<Booking | null> => {
+    try {
+        const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
+        const docSnap = await getDoc(bookingRef);
+        if (docSnap.exists()) {
+            return mapDocToBooking(docSnap);
+        }
+        return null;
+    } catch (error) {
+        console.error(`Error fetching booking with ID ${bookingId}: `, error);
+        throw error;
+    }
+};
+
 
 export const addBookingToFirestore = async (bookingData: BookingInput): Promise<string> => {
   const user = auth.currentUser;
-  if (!user) {
-    console.error("Error adding booking: User not authenticated.");
-    throw new Error("User not authenticated. Cannot create booking.");
-  }
+  // If no user is logged in (i.e., a public booking), assign it to the public restaurant owner ID.
+  // Otherwise, assign it to the logged-in admin.
+  const ownerId = user ? user.uid : PUBLIC_RESTAURANT_ID;
+  
   try {
     const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
       ...bookingData,
-      ownerUID: user.uid, 
+      ownerUID: ownerId, 
       createdAt: serverTimestamp(), 
     });
     return docRef.id;
