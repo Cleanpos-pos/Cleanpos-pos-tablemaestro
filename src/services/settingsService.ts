@@ -113,7 +113,7 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
         ...data,
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
-        restaurantGalleryUrls: Array.from({ length: 6 }).map((_, i) => dbGalleryUrls[i] ?? null),
+        restaurantGalleryUrls: Array.from({ length: 6 }).map((_, i) => dbGalleryUrls[i] || null),
       };
 
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {
