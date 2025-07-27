@@ -7,6 +7,7 @@ import {
   addDoc,
   onSnapshot,
   doc,
+  getDoc,
   getDocs,
   query,
   where
@@ -29,27 +30,32 @@ type PlanId = keyof typeof priceIds;
 
 /**
  * Verifies if a given Price ID has been synced from Stripe to Firestore.
+ * This is a crucial pre-flight check to ensure we don't try to create a checkout
+ * for a price that doesn't exist or hasn't been synced by the extension yet.
  * @param priceId The Stripe Price ID to check.
  * @returns {Promise<boolean>} True if the price exists, false otherwise.
  */
 async function verifyPriceExistsInFirestore(priceId: string): Promise<boolean> {
   try {
-    // The extension creates a `products` collection with sub-collections for `prices`.
-    const pricesQuery = query(
-      collection(db, 'products'),
-      where('active', '==', true)
-    );
-    const productsSnapshot = await getDocs(pricesQuery);
+    // The Stripe extension docs can be ambiguous. It might use 'products' or 'subscription'.
+    // We will check both common collection names to be robust.
+    const collectionsToSearch = ['products', 'subscription'];
 
-    for (const productDoc of productsSnapshot.docs) {
-      const priceRef = doc(db, productDoc.ref.path, 'prices', priceId);
-      const priceSnap = await getDoc(priceRef);
-      if (priceSnap.exists()) {
-        console.log(`[paymentService] Verified priceId "${priceId}" exists in Firestore for product "${productDoc.id}".`);
-        return true;
-      }
+    for (const collectionName of collectionsToSearch) {
+        const productsQuery = query(collection(db, collectionName), where('active', '==', true));
+        const productsSnapshot = await getDocs(productsQuery);
+
+        for (const productDoc of productsSnapshot.docs) {
+          const priceRef = doc(db, productDoc.ref.path, 'prices', priceId);
+          const priceSnap = await getDoc(priceRef);
+          if (priceSnap.exists()) {
+            console.log(`[paymentService] Verified priceId "${priceId}" exists in Firestore collection "${collectionName}" for product "${productDoc.id}".`);
+            return true;
+          }
+        }
     }
-    console.warn(`[paymentService] PriceId "${priceId}" was NOT found in the 'prices' sub-collection of any active product.`);
+
+    console.warn(`[paymentService] PriceId "${priceId}" was NOT found in the 'prices' sub-collection of any active product in either 'products' or 'subscription' collections.`);
     return false;
   } catch (error) {
     console.error("[paymentService] Error verifying price in Firestore:", error);
