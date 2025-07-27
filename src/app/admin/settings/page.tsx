@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, GalleryHorizontalEnd, Search } from "lucide-react";
+import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CombinedSettings } from "@/lib/types";
 import Image from "next/image";
@@ -41,7 +41,6 @@ const restaurantProfileSchema = z.object({
     .optional()
     .default(null),
   restaurantImageUrl: z.string().url("Invalid URL for main image.").nullable().optional(),
-  restaurantGalleryUrls: z.array(z.string().url("Invalid URL for gallery image.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
   seoH1: z.string().max(70, "H1 tag should be concise.").transform(val => val === "" ? null : val).nullable().optional(),
   seoMetaDescription: z.string().max(160, "Description should be under 160 characters.").transform(val => val === "" ? null : val).nullable().optional(),
   seoKeywords: z.string().max(250, "Keywords list is too long.").transform(val => val === "" ? null : val).nullable().optional(),
@@ -57,7 +56,6 @@ const defaultSettingsData: CombinedSettings = {
   bookingLeadTimeDays: 90,
   restaurantName: "My Restaurant",
   restaurantImageUrl: null,
-  restaurantGalleryUrls: Array(6).fill(null),
   seoH1: null,
   seoMetaDescription: null,
   seoKeywords: null,
@@ -67,8 +65,6 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [galleryImageFiles, setGalleryImageFiles] = useState<(File | null)[]>(Array(6).fill(null));
-  const [galleryImagePreviews, setGalleryImagePreviews] = useState<(string | null)[]>(Array(6).fill(null));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -85,7 +81,6 @@ export default function SettingsPage() {
         const placeholderSettings = { ...defaultSettingsData, restaurantName: "Please Log In" };
         form.reset(placeholderSettings);
         setImagePreview(placeholderSettings.restaurantImageUrl);
-        setGalleryImagePreviews([...(placeholderSettings.restaurantGalleryUrls || Array(6).fill(null))]);
         setIsLoading(false);
         return;
     }
@@ -101,31 +96,19 @@ export default function SettingsPage() {
             bookingLeadTimeDays: settings.bookingLeadTimeDays ?? defaultSettingsData.bookingLeadTimeDays,
             restaurantName: settings.restaurantName ?? null,
             restaurantImageUrl: settings.restaurantImageUrl ?? null,
-            restaurantGalleryUrls: (settings.restaurantGalleryUrls && settings.restaurantGalleryUrls.length <= 6 ? settings.restaurantGalleryUrls : Array(6).fill(null)).map(url => url ?? null),
             seoH1: settings.seoH1 ?? null,
             seoMetaDescription: settings.seoMetaDescription ?? null,
             seoKeywords: settings.seoKeywords ?? null,
         };
 
-        if (sanitizedSettings.restaurantGalleryUrls.length < 6) {
-            sanitizedSettings.restaurantGalleryUrls = [
-                ...sanitizedSettings.restaurantGalleryUrls,
-                ...Array(6 - sanitizedSettings.restaurantGalleryUrls.length).fill(null)
-            ];
-        } else if (sanitizedSettings.restaurantGalleryUrls.length > 6) {
-            sanitizedSettings.restaurantGalleryUrls = sanitizedSettings.restaurantGalleryUrls.slice(0, 6);
-        }
-
         form.reset(sanitizedSettings);
         console.log("[settingsPage][fetchSettings] Settings loaded and form reset:", JSON.stringify(sanitizedSettings));
         setImagePreview(sanitizedSettings.restaurantImageUrl);
-        setGalleryImagePreviews([...(sanitizedSettings.restaurantGalleryUrls || Array(6).fill(null))]);
       } else {
         console.warn("[settingsPage][fetchSettings] getRestaurantSettings returned falsy, but should return defaults. Resetting form to defaultSettingsData for safety.");
         const personalizedDefaults = { ...defaultSettingsData, restaurantName: auth.currentUser?.email ? `${auth.currentUser.email}'s Restaurant` : "My New Restaurant" };
         form.reset(personalizedDefaults);
         setImagePreview(personalizedDefaults.restaurantImageUrl);
-        setGalleryImagePreviews(Array(6).fill(null));
         toast({
           title: "Using Default Settings",
           description: "No saved settings found. You can configure and save new settings.",
@@ -142,7 +125,6 @@ export default function SettingsPage() {
       const errorFallbackSettings = { ...defaultSettingsData, restaurantName: "Error Loading Settings" };
       form.reset(errorFallbackSettings);
       setImagePreview(errorFallbackSettings.restaurantImageUrl);
-      setGalleryImagePreviews(Array(6).fill(null));
     } finally {
       setIsLoading(false);
       console.log("[settingsPage][fetchSettings] Finished loading settings, isLoading set to false.");
@@ -161,7 +143,6 @@ export default function SettingsPage() {
         const placeholderSettings = { ...defaultSettingsData, restaurantName: "Please Log In To Manage Settings" };
         form.reset(placeholderSettings);
         setImagePreview(null);
-        setGalleryImagePreviews(Array(6).fill(null));
       }
     });
     return () => {
@@ -191,36 +172,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleGalleryImageChange = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = event.target.files?.[0];
-    const newGalleryImageFiles = [...galleryImageFiles];
-    const newGalleryImagePreviews = [...galleryImagePreviews];
-
-    if (file) {
-      console.log(`[settingsPage][handleGalleryImageChange] New gallery image selected for slot ${index}:`, file.name);
-      newGalleryImageFiles[index] = file;
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        newGalleryImagePreviews[index] = reader.result as string;
-        setGalleryImagePreviews(newGalleryImagePreviews);
-      };
-      reader.readAsDataURL(file);
-      if (!form.formState.isDirty) {
-         form.setValue("restaurantName", form.getValues("restaurantName"), { shouldDirty: true });
-      }
-    } else {
-      console.log(`[settingsPage][handleGalleryImageChange] Gallery image selection cancelled for slot ${index}.`);
-      newGalleryImageFiles[index] = null;
-      newGalleryImagePreviews[index] = form.getValues("restaurantGalleryUrls")?.[index] || null;
-      setGalleryImagePreviews(newGalleryImagePreviews);
-    }
-    setGalleryImageFiles(newGalleryImageFiles);
-  };
-
   async function onSubmit(values: CombinedSettings) {
     console.log("[settingsPage][onSubmit] Triggered. Raw form values:", JSON.stringify(values));
     console.log("[settingsPage][onSubmit] Current imageFile:", imageFile ? imageFile.name : 'null');
-    console.log("[settingsPage][onSubmit] Current galleryImageFiles:", galleryImageFiles.map(f => f ? f.name : 'null'));
 
     if (!auth.currentUser) {
       toast({
@@ -241,11 +195,9 @@ export default function SettingsPage() {
     const settingsToSave: CombinedSettings = { ...values };
     settingsToSave.restaurantName = values.restaurantName ?? null;
     settingsToSave.restaurantImageUrl = values.restaurantImageUrl ?? null;
-    settingsToSave.restaurantGalleryUrls = (values.restaurantGalleryUrls ?? Array(6).fill(null)).map(url => url ?? null);
     settingsToSave.seoH1 = values.seoH1 ?? null;
     settingsToSave.seoMetaDescription = values.seoMetaDescription ?? null;
     settingsToSave.seoKeywords = values.seoKeywords ?? null;
-
 
     try {
       console.log("[settingsPage][onSubmit] Entering try block for uploads and save. Main imageFile:", imageFile ? imageFile.name : 'null');
@@ -263,39 +215,6 @@ export default function SettingsPage() {
         settingsToSave.restaurantImageUrl = null;
       }
 
-
-      console.log("[settingsPage][onSubmit] Processing gallery images. GalleryImageFiles:", galleryImageFiles.map(f => f ? f.name : 'null'));
-      const finalGalleryUrls: (string | null)[] = [...settingsToSave.restaurantGalleryUrls];
-
-      for (let i = 0; i < 6; i++) {
-        const file = galleryImageFiles[i];
-        const existingFormUrl = form.getValues("restaurantGalleryUrls")?.[i] ?? null;
-        console.log(`[settingsPage][onSubmit] Gallery slot ${i}: File present - ${!!file}, Current form URL - ${existingFormUrl}, Preview - ${galleryImagePreviews[i]}`);
-
-        if (file) {
-          const timestamp = Date.now();
-          const uniqueFileName = `gallery_slot_${i}_${timestamp}_${file.name.replace(/\s+/g, '_')}`;
-          const galleryImagePath = `restaurant/${userId}/gallery/${uniqueFileName}`;
-          try {
-            console.log(`[settingsPage][onSubmit] Uploading gallery image for slot ${i} to path: ${galleryImagePath}`);
-            const uploadedUrl = await uploadImageAndGetURL(file, galleryImagePath);
-            finalGalleryUrls[i] = uploadedUrl;
-            console.log(`[settingsPage][onSubmit] Gallery slot ${i} uploaded: ${uploadedUrl}`);
-          } catch (uploadError) {
-            console.error(`[settingsPage][onSubmit] Failed to upload gallery image for slot ${i}:`, uploadError);
-            toast({
-              title: `Gallery Image Slot ${i + 1} Upload Failed`,
-              description: uploadError instanceof Error ? uploadError.message : "Could not upload image.",
-              variant: "destructive",
-            });
-          }
-        } else if (galleryImagePreviews[i] === null && existingFormUrl !== null) {
-           console.log(`[settingsPage][onSubmit] Gallery slot ${i} preview cleared, setting URL to null.`);
-           finalGalleryUrls[i] = null;
-        }
-      }
-      settingsToSave.restaurantGalleryUrls = finalGalleryUrls;
-
       console.log("[settingsPage][onSubmit] Attempting to save settings to Firestore with data:", JSON.stringify(settingsToSave));
       await saveRestaurantSettings(settingsToSave);
       console.log("[settingsPage][onSubmit] Settings saved successfully to Firestore.");
@@ -310,8 +229,6 @@ export default function SettingsPage() {
 
       setImageFile(null);
       setImagePreview(newFormValues.restaurantImageUrl);
-      setGalleryImageFiles(Array(6).fill(null));
-      setGalleryImagePreviews([...(newFormValues.restaurantGalleryUrls || Array(6).fill(null))]);
       console.log("[settingsPage][onSubmit] Local file and preview states reset.");
 
     } catch (error) {
@@ -389,51 +306,6 @@ export default function SettingsPage() {
                   render={() => <FormMessage />}
                 />
               </FormItem>
-
-              <FormField
-                control={form.control}
-                name="restaurantGalleryUrls"
-                render={() => (
-                <FormItem className="md:col-span-2 pt-4">
-                  <FormLabel className="font-body text-lg flex items-center">
-                    <GalleryHorizontalEnd className="mr-2 h-5 w-5 text-muted-foreground" />
-                    Restaurant Gallery (Up to 6 images)
-                  </FormLabel>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-2">
-                    {Array.from({ length: 6 }).map((_, index) => (
-                      <div key={index} className="space-y-2">
-                        <FormControl>
-                          <Input
-                            type="file"
-                            accept="image/png, image/jpeg, image/webp"
-                            onChange={(e) => handleGalleryImageChange(e, index)}
-                            className="font-body file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                          />
-                        </FormControl>
-                        {galleryImagePreviews[index] ? (
-                          <div className="relative w-full aspect-video rounded-md overflow-hidden border shadow-sm">
-                            <Image src={galleryImagePreviews[index]!} alt={`Gallery image ${index + 1} preview`} layout="fill" objectFit="cover" data-ai-hint="food interior" />
-                          </div>
-                        ) : (
-                          <div className="relative w-full aspect-video rounded-md overflow-hidden border shadow-sm flex items-center justify-center bg-muted/30">
-                            <ImageIcon className="h-12 w-12 text-muted-foreground" />
-                          </div>
-                        )}
-                        {form.formState.errors.restaurantGalleryUrls && typeof form.formState.errors.restaurantGalleryUrls === 'object' && (form.formState.errors.restaurantGalleryUrls as any)[index] && (
-                            <FormMessage>
-                                {(form.formState.errors.restaurantGalleryUrls as any)[index]?.message}
-                            </FormMessage>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <FormDescription className="font-body mt-2">Upload images for your restaurant's gallery. Max 5MB each. Clear an input to remove an image.</FormDescription>
-                   <FormMessage>
-                    {typeof form.formState.errors.restaurantGalleryUrls?.message === 'string' && form.formState.errors.restaurantGalleryUrls.message}
-                   </FormMessage>
-                </FormItem>
-                )}
-                />
             </CardContent>
           </Card>
 
@@ -596,4 +468,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-    

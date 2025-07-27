@@ -9,13 +9,9 @@ import type { CombinedSettings } from "@/lib/types";
 
 export default async function HomePage() {
   let settings: CombinedSettings | null = null;
-  let galleryImageUrls: string[] = [];
-
+  
   try {
     settings = await getPublicRestaurantSettings();
-    if (settings?.restaurantGalleryUrls) {
-      galleryImageUrls = settings.restaurantGalleryUrls.filter(url => url !== null) as string[];
-    }
   } catch (error) {
     console.error("--------------------------------------------------------------------");
     console.error("ERROR FETCHING PUBLIC RESTAURANT SETTINGS FOR HOMEPAGE:");
@@ -88,45 +84,6 @@ export default async function HomePage() {
           </CardContent>
         </Card>
 
-        {/* Food Gallery Section */}
-        <Card className="shadow-2xl rounded-xl overflow-hidden">
-          <CardHeader className="bg-muted text-center p-8">
-            <div className="flex justify-center mb-4">
-              <Camera className="w-16 h-16 text-muted-foreground" />
-            </div>
-            <h2 className="text-3xl font-headline text-foreground">View Our Food Gallery</h2>
-            <CardDescription className="text-muted-foreground/80 mt-2 font-body">
-              A glimpse of the culinary delights awaiting you.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-8">
-            {galleryImageUrls.length > 0 ? (
-              <div className="grid grid-cols-2 gap-4">
-                {galleryImageUrls.slice(0, 4).map((url, index) => (
-                  <div key={index} className="rounded-lg overflow-hidden shadow-md aspect-square">
-                    <Image
-                      src={url}
-                      alt={`Restaurant gallery image ${index + 1}`}
-                      width={300}
-                      height={300}
-                      className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                      data-ai-hint="restaurant food" 
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-center text-muted-foreground font-body py-4">
-                The restaurant's photo gallery is not available at the moment. Please check back later or visit the restaurant to see our offerings!
-              </p>
-            )}
-             {settings === null && (
-                <p className="text-center text-destructive font-body py-4">
-                    Could not load restaurant gallery due to a configuration issue. Please check console for details.
-                </p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       <footer className="mt-12 text-center text-muted-foreground text-sm font-body">

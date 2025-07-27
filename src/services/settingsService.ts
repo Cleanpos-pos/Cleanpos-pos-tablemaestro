@@ -21,7 +21,6 @@ const defaultCombinedSettings: CombinedSettings = {
   bookingLeadTimeDays: 90,
   restaurantName: "My Restaurant",
   restaurantImageUrl: null,
-  restaurantGalleryUrls: Array(6).fill(null),
   seoH1: null,
   seoMetaDescription: null,
   seoKeywords: null,
@@ -61,27 +60,11 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
     dataToSave.seoMetaDescription = settings.seoMetaDescription ?? null;
     dataToSave.seoKeywords = settings.seoKeywords ?? null;
 
-
-    if (settings.restaurantGalleryUrls && Array.isArray(settings.restaurantGalleryUrls)) {
-      dataToSave.restaurantGalleryUrls = settings.restaurantGalleryUrls.map(url => url ?? null);
-    } else {
-      dataToSave.restaurantGalleryUrls = Array(6).fill(null);
-    }
-
-    if (dataToSave.restaurantGalleryUrls.length < 6) {
-        dataToSave.restaurantGalleryUrls = [...dataToSave.restaurantGalleryUrls, ...Array(6 - dataToSave.restaurantGalleryUrls.length).fill(null)];
-    } else if (dataToSave.restaurantGalleryUrls.length > 6) {
-        dataToSave.restaurantGalleryUrls = dataToSave.restaurantGalleryUrls.slice(0, 6);
-    }
-
     (Object.keys(defaultCombinedSettings) as Array<keyof CombinedSettings>).forEach(key => {
         if (dataToSave[key] === undefined) {
             (dataToSave as any)[key] = (defaultCombinedSettings as any)[key];
              if (key === 'restaurantName' || key === 'restaurantImageUrl' || key === 'seoH1' || key === 'seoMetaDescription' || key === 'seoKeywords') {
                 (dataToSave as any)[key] = null;
-            }
-            if (key === 'restaurantGalleryUrls' && !(dataToSave[key])) {
-                (dataToSave as any)[key] = Array(6).fill(null);
             }
         }
     });
@@ -113,14 +96,12 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      const dbGalleryUrls = (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls)) ? data.restaurantGalleryUrls : [];
 
       const mergedSettings: CombinedSettings = {
         ...defaultCombinedSettings,
         ...data,
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
-        restaurantGalleryUrls: Array.from({ length: 6 }).map((_, i) => dbGalleryUrls[i] || null),
         seoH1: data.seoH1 ?? defaultCombinedSettings.seoH1,
         seoMetaDescription: data.seoMetaDescription ?? defaultCombinedSettings.seoMetaDescription,
         seoKeywords: data.seoKeywords ?? defaultCombinedSettings.seoKeywords,
