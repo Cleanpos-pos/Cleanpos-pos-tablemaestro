@@ -58,7 +58,7 @@ export interface RestaurantProfileSettings {
 // Combined type for the settings page form
 export type CombinedSettings = ReservationSettings & RestaurantProfileSettings;
 
-export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning' | 'unavailable';
+export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning' | 'unavailable' | 'pending';
 
 export interface Table {
   id: string;

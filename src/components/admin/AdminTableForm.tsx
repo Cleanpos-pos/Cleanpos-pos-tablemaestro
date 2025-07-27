@@ -29,13 +29,13 @@ interface AdminTableFormProps {
 const tableFormSchema = z.object({
   name: z.string().min(1, "Table name is required.").max(50, "Name too long."),
   capacity: z.coerce.number().min(1, "Capacity must be at least 1.").max(50, "Max 50 guests."),
-  status: z.enum(['available', 'occupied', 'reserved', 'cleaning', 'unavailable']),
+  status: z.enum(['available', 'occupied', 'reserved', 'cleaning', 'unavailable', 'pending']),
   location: z.string().max(50, "Location too long.").optional().or(z.literal('')),
 });
 
 type TableFormValues = z.infer<typeof tableFormSchema>;
 
-const tableStatuses: TableStatus[] = ['available', 'occupied', 'reserved', 'cleaning', 'unavailable'];
+const tableStatuses: TableStatus[] = ['available', 'pending', 'reserved', 'occupied', 'cleaning', 'unavailable'];
 
 export default function AdminTableForm({ existingTable, onFormSubmit, onCancel }: AdminTableFormProps) {
   const { toast } = useToast();

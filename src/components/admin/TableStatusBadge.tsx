@@ -13,6 +13,7 @@ const statusColors: Record<TableStatus, string> = {
   available: "bg-green-500 hover:bg-green-600",
   occupied: "bg-red-500 hover:bg-red-600",
   reserved: "bg-blue-500 hover:bg-blue-600",
+  pending: "bg-orange-500 hover:bg-orange-600",
   cleaning: "bg-yellow-500 hover:bg-yellow-600 text-yellow-800",
   unavailable: "bg-gray-500 hover:bg-gray-600",
 };

@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { CalendarIcon, User, Mail, Phone, Clock, Users, StickyNote, Save, Loader2, CheckCircle, SquareStack } from "lucide-react";
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import type { Booking, BookingInput, Table } from "@/lib/types";
+import type { Booking, BookingInput, Table, TableStatus } from "@/lib/types";
 import { addBookingToFirestore, updateBookingInFirestore } from "@/services/bookingService";
 import { updateTable as updateTableService, getTables } from "@/services/tableService";
 import { useRouter } from "next/navigation";
@@ -157,49 +157,31 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
         });
       }
 
-      if (newStatus === 'seated' && newTableId) {
-        try {
-          console.log(`[AdminBookingForm] Booking for ${values.guestName} SEATED at table ${newTableId}. Setting table to 'occupied'.`);
-          await updateTableService(newTableId, { status: 'occupied' });
-        } catch (tableError) {
-          console.error(`[AdminBookingForm] Failed to set table ${newTableId} to occupied:`, tableError);
-          toast({
-            title: "Table Update Failed",
-            description: `Booking saved, but could not mark table ${newTableId} as occupied. Please check table ID and status manually. Error: ${tableError instanceof Error ? tableError.message : String(tableError)}`,
-            variant: "destructive",
-          });
-        }
-      }
+      // --- Table Status Automation Logic ---
+      
+      const tableStatusMap: { [key in Booking['status']]?: TableStatus } = {
+        pending: 'pending',
+        confirmed: 'reserved',
+        seated: 'occupied',
+      };
+      
+      const newTableStatus = newTableId ? tableStatusMap[newStatus] : undefined;
 
-      if (oldStatus === 'seated' && oldTableId) {
-        if (newStatus !== 'seated' || newTableId !== oldTableId) {
-          try {
-            console.log(`[AdminBookingForm] Booking for ${values.guestName} no longer seated at ${oldTableId} (new status: ${newStatus}, new table: ${newTableId}). Setting old table ${oldTableId} to 'available'.`);
+      // Case 1: A table was previously assigned
+      if (oldTableId) {
+        // If the table is different OR the new status doesn't require a hold, free the old table
+        if (oldTableId !== newTableId || !newTableStatus) {
+            console.log(`[AdminBookingForm] Releasing old table ${oldTableId} to 'available'.`);
             await updateTableService(oldTableId, { status: 'available' });
-          } catch (tableError) {
-             console.error(`[AdminBookingForm] Failed to set table ${oldTableId} to available:`, tableError);
-             toast({
-                title: "Old Table Update Failed",
-                description: `Booking saved, but could not mark previous table ${oldTableId} as available. Error: ${tableError instanceof Error ? tableError.message : String(tableError)}`,
-                variant: "destructive",
-            });
-          }
         }
       }
       
-      if (newStatus === 'seated' && newTableId && oldTableId && oldTableId !== newTableId && oldStatus === 'seated') {
-          try {
-            console.log(`[AdminBookingForm] Booking for ${values.guestName} MOVED from ${oldTableId} to ${newTableId} while 'seated'. Setting old table ${oldTableId} to 'available'.`);
-            await updateTableService(oldTableId, { status: 'available' });
-          } catch (tableError) {
-            console.error(`[AdminBookingForm] Failed to set old table ${oldTableId} to available after move:`, tableError);
-            toast({
-                title: "Old Table Update Failed (Move)",
-                description: `Booking saved, new table ${newTableId} occupied. Could not mark previous table ${oldTableId} as available. Error: ${tableError instanceof Error ? tableError.message : String(tableError)}`,
-                variant: "destructive",
-            });
-          }
+      // Case 2: A new table is being assigned with a status that holds it
+      if (newTableId && newTableStatus) {
+        console.log(`[AdminBookingForm] Assigning new table ${newTableId} with status '${newTableStatus}'.`);
+        await updateTableService(newTableId, { status: newTableStatus });
       }
+
 
       router.push("/admin/bookings"); 
       router.refresh(); 

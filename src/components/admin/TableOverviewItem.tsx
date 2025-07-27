@@ -18,7 +18,7 @@ interface TableOverviewItemProps {
   onStatusChange: (tableId: string, newStatus: TableStatus) => void;
 }
 
-const tableStatuses: TableStatus[] = ['available', 'occupied', 'reserved', 'cleaning', 'unavailable'];
+const tableStatuses: TableStatus[] = ['available', 'pending', 'occupied', 'reserved', 'cleaning', 'unavailable'];
 
 const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }) => {
   const [associatedBooking, setAssociatedBooking] = useState<Booking | null>(null);
@@ -28,7 +28,7 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
 
   useEffect(() => {
     const fetchBookingForTable = async () => {
-      if (table.status === 'occupied' || table.status === 'reserved') {
+      if (table.status === 'occupied' || table.status === 'reserved' || table.status === 'pending') {
         setIsLoadingBooking(true);
         setAssociatedBooking(null); // Reset before fetching
         try {
@@ -41,17 +41,12 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
             if (table.status === 'occupied') {
               // Prefer a 'seated' booking if table is occupied
               relevantBooking = activeBookings.find(b => b.status === 'seated') || activeBookings[0];
-              console.log(`[TableOverviewItem: ${table.name}] Table is 'occupied'. Preferred 'seated' booking:`, activeBookings.find(b => b.status === 'seated'), `Fallback to first active:`, activeBookings[0], `Final relevantBooking:`, relevantBooking);
             } else if (table.status === 'reserved') {
-              // Prefer a 'confirmed' or 'pending' booking for today if table is reserved
-              const todayBooking = activeBookings.find(b =>
-                (b.status === 'confirmed' || b.status === 'pending') &&
-                b.date &&
-                isToday(parseISO(b.date))
-              );
-              // If no specific booking for today, take the first upcoming one from the sorted list.
-              relevantBooking = todayBooking || activeBookings[0];
-              console.log(`[TableOverviewItem: ${table.name}] Table is 'reserved'. Preferred 'today' booking:`, todayBooking, `Fallback to first active:`, activeBookings[0], `Final relevantBooking:`, relevantBooking);
+              // Prefer a 'confirmed' booking
+              relevantBooking = activeBookings.find(b => b.status === 'confirmed') || activeBookings[0];
+            } else if (table.status === 'pending') {
+                // Prefer a 'pending' booking
+              relevantBooking = activeBookings.find(b => b.status === 'pending') || activeBookings[0];
             }
           } else {
             console.log(`[TableOverviewItem: ${table.name}] No active bookings found for this table.`);
@@ -69,7 +64,7 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
           setIsLoadingBooking(false);
         }
       } else {
-        // Clear booking if table is not occupied/reserved, or if it becomes available etc.
+        // Clear booking if table is not occupied/reserved/pending, or if it becomes available etc.
         if(associatedBooking !== null) setAssociatedBooking(null); 
         console.log(`[TableOverviewItem: ${table.name}] Table status is '${table.status}', not 'occupied' or 'reserved'. Associated booking cleared if previously set.`);
       }
@@ -157,7 +152,7 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
             </Dialog>
           </div>
         )}
-        {!isLoadingBooking && !associatedBooking && (table.status === 'occupied' || table.status === 'reserved') && (
+        {!isLoadingBooking && !associatedBooking && (table.status === 'occupied' || table.status === 'reserved' || table.status === 'pending') && (
            <div className="text-xs p-2 bg-muted/30 rounded-md mt-auto">
              <p className="font-body text-muted-foreground">No active booking linked.</p>
            </div>
@@ -169,4 +164,3 @@ const TableOverviewItem: FC<TableOverviewItemProps> = ({ table, onStatusChange }
 };
 
 export default TableOverviewItem;
-
