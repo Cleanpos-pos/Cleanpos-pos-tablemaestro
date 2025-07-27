@@ -23,7 +23,8 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/config/firebase";
 import Link from "next/link";
 import { saveRestaurantSettings } from "@/services/settingsService";
-import { goToCheckout } from "@/services/paymentService";
+import { createCheckoutRedirect } from "@/services/paymentService";
+import { useState } from 'react';
 
 const signupFormSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -65,20 +66,22 @@ export default function SignupForm({ selectedPlan }: SignupFormProps) {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       
       // This will sign the user in, so subsequent service calls will be authenticated
+      const user = userCredential.user;
       
       // Save their selected plan to their settings
-      if (userCredential.user) {
+      if (user) {
           await saveRestaurantSettings({ plan: selectedPlan || 'starter' });
       }
 
       toast({
         title: "Account Created!",
-        description: "Redirecting you to payment to complete your subscription.",
+        description: "Redirecting you to payment to complete your subscription. Please wait.",
       });
       
-      // Redirect to Stripe Checkout
-      await goToCheckout(selectedPlan || 'starter');
-      // The user will be redirected to Stripe, so the code below this may not execute if successful.
+      // Call the new payment service which handles the Firestore document creation and listener
+      await createCheckoutRedirect(selectedPlan || 'starter');
+      // The user will be redirected to Stripe by the payment service.
+      // A fallback might be needed if the redirect fails, but the service handles errors.
 
     } catch (error: any) {
       let errorMessage = "Sign up failed. Please try again.";

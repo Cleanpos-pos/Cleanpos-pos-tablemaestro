@@ -1,5 +1,5 @@
 
-import { initializeApp, getApp, getApps } from 'firebase/app';
+import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
@@ -23,7 +23,7 @@ if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_FIRE
 }
 
 // Initialize Firebase
-let app;
+let app: FirebaseApp;
 if (!getApps().length) {
   try {
     app = initializeApp(firebaseConfig);
@@ -32,6 +32,7 @@ if (!getApps().length) {
     console.error('[FirebaseConfig] Error initializing Firebase app:', error);
     // Potentially throw the error or handle it to prevent the app from breaking further,
     // though if Firebase doesn't init, many things will fail.
+    throw error; // Re-throw to make it clear initialization failed
   }
 } else {
   app = getApp();
