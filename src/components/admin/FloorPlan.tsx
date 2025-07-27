@@ -97,8 +97,8 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
     const initialPositions: Record<string, { x: number, y: number }> = {};
     allTables.forEach((table, index) => {
       initialPositions[table.id] = {
-        x: table.x ?? (index % 5) * (80 + GRID_SIZE * 2), // Adjusted for smaller tables
-        y: table.y ?? Math.floor(index / 5) * (50 + GRID_SIZE * 2), // Adjusted for smaller tables
+        x: table.x ?? (index % 8) * (80 + GRID_SIZE * 4),
+        y: table.y ?? Math.floor(index / 8) * (50 + GRID_SIZE * 4),
       };
     });
     setPositions(initialPositions);
@@ -150,7 +150,7 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
           return (
             <DraggableTable key={table.id} table={table} initialPosition={pos}>
               <div className={cn(
-                  "w-[40px] h-[25px] rounded-md shadow-md cursor-grab active:cursor-grabbing p-1 flex flex-col justify-between transition-colors text-[8px]",
+                  "w-[80px] h-[50px] rounded-lg shadow-lg cursor-grab active:cursor-grabbing p-2 flex flex-col justify-between transition-colors text-xs",
                   table.status === 'available' && 'bg-green-100 border-green-400',
                   table.status === 'occupied' && 'bg-red-100 border-red-400',
                   table.status === 'reserved' && 'bg-blue-100 border-blue-400',
@@ -158,11 +158,11 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
                   (table.status === 'cleaning' || table.status === 'unavailable') && 'bg-gray-200 border-gray-400',
               )}>
                 <div className="flex justify-between items-center font-bold">
-                  <span className="flex items-center gap-0.5 truncate"><SquareStack className="h-2 w-2 shrink-0"/> <span className="truncate">{table.name}</span></span>
-                  <span className="flex items-center gap-0.5"><Users className="h-2 w-2 shrink-0"/> {table.capacity}</span>
+                  <span className="flex items-center gap-1 truncate"><SquareStack className="h-3 w-3 shrink-0"/> <span className="truncate">{table.name}</span></span>
+                  <span className="flex items-center gap-1"><Users className="h-3 w-3 shrink-0"/> {table.capacity}</span>
                 </div>
-                <div className="text-center -mt-0.5">
-                  <TableStatusBadge status={table.status} className="px-1 py-0 text-[6px]" />
+                <div className="text-center">
+                  <TableStatusBadge status={table.status} className="px-1.5 py-0.5 text-xs" />
                 </div>
               </div>
             </DraggableTable>
