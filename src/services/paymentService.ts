@@ -10,18 +10,13 @@ import {
 } from 'firebase/firestore';
 
 // =================================================================================
-// IMPORTANT: ACTION REQUIRED
-// =================================================================================
-// You must replace these placeholder Price IDs with the actual IDs from your Stripe account.
-// 1. Go to your Stripe Dashboard: https://dashboard.stripe.com/products
-// 2. Click on your "Starter" plan product.
-// 3. Under the "Pricing" section, you will see a Price ID (e.g., price_1PGaFz...). Copy it.
-// 4. Paste it here, replacing the placeholder for 'starter'.
-// 5. Repeat for your "Pro" plan.
+// Price IDs from your Stripe account.
+// Starter Plan: Corresponds to £20/month price
+// Pro Plan: Corresponds to £40/month price
 // =================================================================================
 const priceIds = {
-  starter: 'REPLACE_WITH_YOUR_STARTER_PLAN_PRICE_ID', // e.g., price_1PGaFzBf1234abcd5678efgh
-  pro: 'REPLACE_WITH_YOUR_PRO_PLAN_PRICE_ID', // e.g., price_1PGaGXBf1234abcd9101ijkl
+  starter: 'price_1RpVuKBIjn0fCSSg59S4Fx0M',
+  pro: 'price_1RpVv5BIjn0fCSSgxeDxX4DW',
 };
 type PlanId = keyof typeof priceIds;
 
