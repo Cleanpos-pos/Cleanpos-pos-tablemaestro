@@ -174,7 +174,7 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
       bookingDate: formattedDate,
       bookingTime: bookingDetails.time,
       partySize: bookingDetails.partySize,
-      notes: bookingDetails.notes || '',
+      notes: bookingDetails.notes || '', // Ensure notes is always a string
     };
 
     const subject = renderSimpleTemplate(template.subject, templateData);
@@ -310,3 +310,5 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     return { success: false, message: `Error sending email: ${errMsg}` };
   }
 }
+
+    
