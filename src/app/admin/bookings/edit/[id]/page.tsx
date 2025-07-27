@@ -20,6 +20,7 @@ import {
   type BookingEmailParams
 } from "@/app/actions/emailActions";
 import { getRestaurantSettings } from "@/services/settingsService";
+import { Badge } from "@/components/ui/badge";
 
 export default function EditBookingPage() {
   const params = useParams();
@@ -152,7 +153,15 @@ export default function EditBookingPage() {
       // Adding a check for result to be safe.
       if (result) {
         if (result.success) {
-            toast({ title: "Email Sent", description: result.message });
+            toast({
+              title: (
+                <div className="flex items-center gap-2">
+                  Email Sent
+                  <Badge className="bg-green-500 text-white">Sent</Badge>
+                </div>
+              ),
+              description: result.message,
+            });
         } else {
             toast({ title: "Email Failed", description: result.message, variant: "destructive" });
         }
