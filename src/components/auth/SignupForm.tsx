@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, Lock, UserPlus, Loader2 } from "lucide-react";
+import { Mail, Lock, UserPlus, Loader2, DollarSign } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Logo from "@/components/shared/Logo";
@@ -32,7 +32,11 @@ const signupFormSchema = z.object({
   path: ["confirmPassword"], // path of error
 });
 
-export default function SignupForm() {
+interface SignupFormProps {
+    selectedPlan?: string | null;
+}
+
+export default function SignupForm({ selectedPlan }: SignupFormProps) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -45,17 +49,22 @@ export default function SignupForm() {
     },
   });
 
+  const getPlanName = (planId: string | null | undefined) => {
+    if (!planId) return "Standard";
+    return planId.charAt(0).toUpperCase() + planId.slice(1);
+  }
+
   async function onSubmit(values: z.infer<typeof signupFormSchema>) {
     form.clearErrors();
     try {
       await createUserWithEmailAndPassword(auth, values.email, values.password);
       toast({
-        title: "Sign Up Successful",
-        description: "Your account has been created. Welcome!",
+        title: "Account Created!",
+        description: "Your account has been successfully created. You will be redirected to the dashboard.",
       });
-      // When a new user signs up, we'll want to create their initial restaurant settings.
-      // This will be handled in a subsequent step by a dedicated service or function.
-      // For now, just redirect to the dashboard.
+      // In a real application, this is where you would redirect to Stripe Checkout
+      // After successful payment, a webhook would update the user's role in Firestore.
+      // For now, we'll redirect to the admin dashboard.
       router.push("/admin/dashboard");
     } catch (error: any) {
       let errorMessage = "Sign up failed. Please try again.";
@@ -77,7 +86,6 @@ export default function SignupForm() {
         variant: "destructive",
       });
       if (error.code !== 'auth/email-already-in-use' && error.code !== 'auth/weak-password' && error.code !== 'auth/invalid-email') {
-        // For generic errors, set error on both fields or a root error if supported
         form.setError("email", { type: "manual", message: " " }); 
         form.setError("password", { type: "manual", message: " " });
       }
@@ -96,7 +104,7 @@ export default function SignupForm() {
           </div>
           <CardTitle className="text-3xl font-headline">Create Your Account</CardTitle>
           <CardDescription className="font-body">
-            Join Table Maestro V2 and manage your restaurant effortlessly.
+            You're signing up for the <span className="font-bold text-primary">{getPlanName(selectedPlan)}</span> plan.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-8">
@@ -157,7 +165,7 @@ export default function SignupForm() {
                   </>
                 ) : (
                   <>
-                    <UserPlus className="mr-2 h-5 w-5" /> Sign Up
+                    <UserPlus className="mr-2 h-5 w-5" /> Create Account & Proceed to Payment
                   </>
                 )}
               </Button>
