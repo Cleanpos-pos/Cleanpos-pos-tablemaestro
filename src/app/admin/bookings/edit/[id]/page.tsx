@@ -160,7 +160,7 @@ export default function EditBookingPage() {
                   <Badge className="bg-green-500 text-white">Sent</Badge>
                 </div>
               ),
-              description: result.message,
+              description: `Note: ${emailTypeDescription} email sent to ${booking.guestEmail}.`,
             });
         } else {
             toast({ title: "Email Failed", description: result.message, variant: "destructive" });
