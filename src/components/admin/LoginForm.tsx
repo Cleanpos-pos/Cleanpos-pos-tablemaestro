@@ -15,11 +15,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, Lock, LogIn } from "lucide-react";
+import { Mail, Lock, LogIn, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Logo from "@/components/shared/Logo";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/config/firebase"; // Import Firebase auth instance
 
 const loginFormSchema = z.object({
@@ -38,6 +38,46 @@ export default function LoginForm() {
       password: "",
     },
   });
+
+  const handlePasswordReset = async () => {
+    const email = form.getValues("email");
+    if (!email) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address in the field above to reset your password.",
+        variant: "destructive",
+      });
+      form.setError("email", { message: "Email is required for password reset." });
+      return;
+    }
+    
+    // Manually trigger validation for the email field
+    const emailValidationResult = await form.trigger("email");
+    if (!emailValidationResult) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast({
+        title: "Password Reset Email Sent",
+        description: `If an account exists for ${email}, a password reset link has been sent. Please check your inbox.`,
+      });
+    } catch (error: any) {
+      console.error("[LoginForm] Password reset error:", error);
+      toast({
+        title: "Password Reset Failed",
+        description: "Could not send password reset email. The email address may not be registered. Please check the email and try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   async function onSubmit(values: z.infer<typeof loginFormSchema>) {
     form.clearErrors(); // Clear previous errors
@@ -146,10 +186,15 @@ export default function LoginForm() {
               />
               <Button type="submit" className="w-full font-body text-lg py-6 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting}>
                 <LogIn className="mr-2 h-5 w-5" />
-                {form.formState.isSubmitting ? "Logging In..." : "Log In"}
+                {form.formState.isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Log In"}
               </Button>
             </form>
           </Form>
+          <div className="mt-6 text-center">
+            <Button variant="link" onClick={handlePasswordReset} className="text-sm font-body text-muted-foreground px-0">
+              Forgot Password?
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
