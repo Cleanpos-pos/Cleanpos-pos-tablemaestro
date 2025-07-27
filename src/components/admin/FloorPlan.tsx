@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
 import type { Table } from '@/lib/types';
 import { DndContext, useDraggable, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
-import { restrictToGrid, restrictToWindowEdges } from '@dnd-kit/modifiers';
+import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import TableStatusBadge from './TableStatusBadge';
 import { Users, SquareStack } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -97,7 +97,7 @@ export default function FloorPlan({ tables, onLayoutChange, updatedLayout }: Flo
     <DndContext 
       onDragEnd={handleDragEnd} 
       sensors={sensors}
-      modifiers={[restrictToGrid(GRID_SIZE), restrictToWindowEdges]}
+      modifiers={[restrictToWindowEdges]}
     >
       <div className="relative w-full min-h-[600px] bg-muted/30 rounded-lg border-2 border-dashed border-gray-300 p-4">
         {tables.map(table => {
