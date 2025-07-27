@@ -53,10 +53,12 @@ const NO_TABLES_DUMMY_VALUE = "__NO_TABLES_AVAILABLE__";
 
 const getInitialDate = (dateString?: string): Date | undefined => {
   if (dateString) {
-    const parsedDate = parseISO(dateString);
-    if (isValid(parsedDate)) {
-      return parsedDate;
-    }
+    try {
+      const parsedDate = parseISO(dateString);
+      if (isValid(parsedDate)) {
+        return parsedDate;
+      }
+    } catch(e) { /* fall through */ }
     console.warn(`Invalid date string from existing booking: ${dateString}. Setting date to undefined.`);
     return undefined;
   }
@@ -124,7 +126,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
       return;
     }
 
-    const bookingDataForFirestore: BookingInput = {
+    const bookingDataForFirestore: Omit<BookingInput, 'communicationHistory'> = {
       ...values,
       date: format(values.date, "yyyy-MM-dd"),
       tableId: values.tableId || undefined, 
@@ -146,7 +148,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
           action: <CheckCircle className="text-green-500" />,
         });
       } else {
-        const newBookingId = await addBookingToFirestore(bookingDataForFirestore);
+        const newBookingId = await addBookingToFirestore(bookingDataForFirestore as BookingInput);
         bookingIdToWatch = newBookingId;
         toast({
           title: "Booking Created",
@@ -345,7 +347,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
             name="tableId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-body flex items-center"><SquareStack className="mr-2 h-4 w-4 text-muted-foreground"/>Assign Table (Optional)</FormLabel>
+                <FormLabel className="font-body flex items-center"><SquareStack className="mr-2 h-4 w-4 text-muted-foreground" />Assign Table (Optional)</FormLabel>
                 <Select 
                   onValueChange={(selectedValue) => {
                     if (selectedValue === CLEAR_TABLE_ID_SENTINEL) {

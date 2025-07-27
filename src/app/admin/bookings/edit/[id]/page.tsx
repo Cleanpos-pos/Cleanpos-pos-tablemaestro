@@ -3,10 +3,10 @@
 
 import AdminBookingForm from "@/components/admin/AdminBookingForm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ArrowLeft, Loader2, AlertCircle, MailWarning, Clock4, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, MailWarning, Clock4, CheckCircle2, MessageSquareText } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import type { Booking } from "@/lib/types";
 import { getDoc, doc } from "firebase/firestore";
@@ -19,11 +19,14 @@ import {
   sendBookingConfirmationEmailAction,
   type BookingEmailParams
 } from "@/app/actions/emailActions";
+import { addCommunicationNoteAction } from "@/app/actions/bookingActions";
 import { getRestaurantSettings } from "@/services/settingsService";
 import { Badge } from "@/components/ui/badge";
+import { format, parseISO } from "date-fns";
 
 export default function EditBookingPage() {
   const params = useParams();
+  const router = useRouter();
   const bookingId = params.id as string;
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,74 +35,72 @@ export default function EditBookingPage() {
   const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant");
   const { toast } = useToast();
 
-  const fetchAdminRestaurantName = useCallback(async (userId: string) => {
+  const fetchAdminRestaurantName = useCallback(async () => {
     try {
-      // getRestaurantSettings implicitly uses auth.currentUser.uid via getSettingsById(user.uid)
-      // It's important that getRestaurantSettings itself correctly handles the case where auth.currentUser might be null
-      // or fetches settings for the given userId if modified to accept one.
-      // For this page, we assume getRestaurantSettings works based on the current auth.currentUser.
       const settings = await getRestaurantSettings();
       setAdminRestaurantName(settings?.restaurantName || "My Restaurant");
     } catch (err) {
       console.error("[EditBookingPage] Error fetching admin's restaurant name:", err);
       setAdminRestaurantName("My Restaurant"); // Fallback
     }
-  }, []); // Empty dependency array for useCallback as getRestaurantSettings relies on global auth state.
+  }, []);
+
+  const fetchBookingData = useCallback(async (userId: string) => {
+      setError(null);
+      setIsLoading(true);
+      try {
+        const bookingRef = doc(db, "bookings", bookingId);
+        const docSnap = await getDoc(bookingRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          // Security check: Make sure the logged-in user owns this booking
+          if(data.ownerUID !== userId) {
+            setError("Permission Denied. You do not have access to this booking.");
+            setBooking(null);
+            return;
+          }
+          
+          setBooking({
+            id: docSnap.id,
+            ...data,
+            date: data.date,
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+            communicationHistory: data.communicationHistory || [],
+          } as Booking);
+        } else {
+          setError("Booking not found.");
+          setBooking(null);
+        }
+        await fetchAdminRestaurantName();
+      } catch (err) {
+        console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
+        setError(err instanceof Error ? err.message : "An unknown error occurred while fetching data.");
+        setBooking(null);
+      } finally {
+        setIsLoading(false);
+      }
+  }, [bookingId, fetchAdminRestaurantName]);
+
 
   useEffect(() => {
-    setIsLoading(true);
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user && bookingId) {
-        const fetchData = async () => {
-          setError(null);
-          try {
-            const bookingRef = doc(db, "bookings", bookingId);
-            const docSnap = await getDoc(bookingRef);
-
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              setBooking({
-                id: docSnap.id,
-                ...data,
-                date: data.date, // Expects string
-                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-              } as Booking);
-            } else {
-              setError("Booking not found.");
-              setBooking(null);
-            }
-            await fetchAdminRestaurantName(user.uid); // Pass user.uid for clarity, though fetchAdminRestaurantName uses global auth
-          } catch (err) {
-            console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
-            setError(err instanceof Error ? err.message : "An unknown error occurred while fetching data.");
-            setAdminRestaurantName("My Restaurant");
-            setBooking(null);
-          } finally {
-            setIsLoading(false);
-          }
-        };
-        fetchData();
-      } else if (!user && bookingId) {
+        fetchBookingData(user.uid);
+      } else {
         setIsLoading(false);
-        setError("User not authenticated. Cannot load booking details or admin info.");
-        setAdminRestaurantName("My Restaurant");
-        setBooking(null);
-      } else if (!bookingId) {
-        setIsLoading(false);
-        setError("No booking ID provided.");
-        setAdminRestaurantName("My Restaurant");
-        setBooking(null);
-      } else { // Handles user is null and no bookingId, or other initial states
-        setIsLoading(false);
-        // Potentially set error if user is null and was expected
         if (!user) {
             setError("User not authenticated.");
+            setBooking(null);
+            // Optional: redirect to login if you want to be strict
+            // router.push('/admin/login');
+        } else if (!bookingId) {
+            setError("No booking ID provided.");
         }
       }
     });
-
     return () => unsubscribe();
-  }, [bookingId, fetchAdminRestaurantName]);
+  }, [bookingId, fetchBookingData, router]);
 
 
   const handleSendBookingRelatedEmail = async (type: 'no-availability' | 'waiting-list' | 'confirmation') => {
@@ -119,7 +120,6 @@ export default function EditBookingPage() {
       case 'waiting-list': emailTypeDescription = 'Waiting List'; break;
       case 'confirmation': emailTypeDescription = 'Booking Confirmation'; break;
       default:
-        // This case should ideally not be reached if types are handled correctly
         toast({ title: "Internal Error", description: "Invalid email type specified.", variant: "destructive" });
         setIsSendingEmail(false);
         return;
@@ -129,13 +129,13 @@ export default function EditBookingPage() {
     const emailParams: BookingEmailParams = {
       recipientEmail: booking.guestEmail,
       adminUserUID: auth.currentUser.uid,
-      adminRestaurantName: adminRestaurantName, // Uses state variable
+      adminRestaurantName: adminRestaurantName,
       bookingDetails: {
         guestName: booking.guestName,
-        date: booking.date, // Expected YYYY-MM-DD
-        time: booking.time, // Expected HH:MM
+        date: booking.date, 
+        time: booking.time, 
         partySize: booking.partySize,
-        notes: booking.notes || '', // Ensure notes is always a string, not undefined
+        notes: booking.notes || '',
       },
     };
 
@@ -148,9 +148,7 @@ export default function EditBookingPage() {
       } else if (type === 'confirmation') {
         result = await sendBookingConfirmationEmailAction(emailParams);
       }
-      // 'result' could be undefined if an invalid type was passed and caught by the default switch case above,
-      // however, the return there should prevent reaching this point.
-      // Adding a check for result to be safe.
+      
       if (result) {
         if (result.success) {
             toast({
@@ -162,13 +160,17 @@ export default function EditBookingPage() {
               ),
               description: `Note: ${emailTypeDescription} email sent to ${booking.guestEmail}.`,
             });
+            // Add communication note
+            const noteTimestamp = format(new Date(), "PPpp");
+            const noteMessage = `${emailTypeDescription} email sent on ${noteTimestamp}.`;
+            await addCommunicationNoteAction(booking.id, noteMessage);
+            // Refresh local booking data to show new note
+            fetchBookingData(auth.currentUser.uid); 
         } else {
             toast({ title: "Email Failed", description: result.message, variant: "destructive" });
         }
       } else {
-        // This path implies the email action didn't return a result, which is unexpected
-        // if the type was valid.
-        toast({ title: "Error", description: "Could not determine email sending outcome for a valid type.", variant: "destructive" });
+        toast({ title: "Error", description: "Could not determine email sending outcome.", variant: "destructive" });
       }
     } catch (err) {
       console.error(`Error sending ${type} email:`, err);
@@ -212,6 +214,7 @@ export default function EditBookingPage() {
           ) : booking ? (
             <>
               <AdminBookingForm existingBooking={booking} />
+              
               <CardFooter className="mt-6 border-t pt-6 flex flex-col sm:flex-row gap-3 justify-start">
                  <Button
                   variant="outline"
@@ -249,6 +252,19 @@ export default function EditBookingPage() {
                         This booking does not have a guest email address. Email notifications cannot be sent.
                     </AlertDescription>
                 </Alert>
+              )}
+               {booking.communicationHistory && booking.communicationHistory.length > 0 && (
+                <div className="mt-6 border-t pt-6">
+                  <h3 className="text-lg font-headline text-foreground flex items-center mb-3">
+                    <MessageSquareText className="mr-2 h-5 w-5 text-primary" />
+                    Communication History
+                  </h3>
+                  <div className="space-y-2 text-sm font-body text-muted-foreground bg-muted/50 p-4 rounded-md">
+                    {booking.communicationHistory.map((note, index) => (
+                      <p key={index} className="border-b border-border/50 pb-1 mb-1 last:border-b-0 last:mb-0 last:pb-0">{note}</p>
+                    ))}
+                  </div>
+                </div>
               )}
             </>
           ) : (

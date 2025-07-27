@@ -1,4 +1,5 @@
 
+
 export interface RestaurantDetails {
   name: string;
   address: string;
@@ -22,6 +23,7 @@ export interface Booking {
   createdAt: string; // ISO date string
   tableId?: string; // Optional: if assigned to a specific table
   ownerUID?: string; // UID of the restaurant owner
+  communicationHistory?: string[];
 }
 
 export interface TimeSlot {
@@ -88,3 +90,4 @@ export interface EmailTemplate {
 
 export type EmailTemplateInput = Pick<EmailTemplate, 'subject' | 'body'>;
 
+export type BookingInput = Omit<Booking, 'id' | 'createdAt' | 'ownerUID'>;

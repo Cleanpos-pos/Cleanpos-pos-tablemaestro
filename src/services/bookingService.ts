@@ -1,4 +1,5 @@
 
+
 import { db, auth } from '@/config/firebase';
 import type { Booking, BookingInput } from '@/lib/types';
 import {
@@ -17,6 +18,8 @@ import {
   QueryDocumentSnapshot,
   getDoc, // Added getDoc
   type DocumentSnapshot, // Explicitly import DocumentSnapshot
+  FieldValue,
+  arrayUnion,
 } from 'firebase/firestore';
 import { PUBLIC_RESTAURANT_ID } from '@/config/constants';
 
@@ -42,7 +45,8 @@ const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData> | Document
     guestPhone: data.guestPhone,
     notes: data.notes,
     tableId: data.tableId,
-    ownerUID: data.ownerUID, 
+    ownerUID: data.ownerUID,
+    communicationHistory: data.communicationHistory || [],
   } as Booking;
 };
 
@@ -89,7 +93,8 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
     const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
       ...bookingData,
       ownerUID: ownerId, 
-      createdAt: serverTimestamp(), 
+      createdAt: serverTimestamp(),
+      communicationHistory: [], // Initialize with an empty array
     });
     return docRef.id;
   } catch (error) {
@@ -108,8 +113,13 @@ export const updateBookingInFirestore = async (bookingId: string, bookingData: B
   }
   try {
     const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
+    const dataToUpdate: { [key: string]: any } = { ...bookingData };
+    if (dataToUpdate.communicationHistory) {
+      delete dataToUpdate.communicationHistory;
+    }
+    
     await updateDoc(bookingRef, {
-        ...bookingData,
+        ...dataToUpdate,
         updatedAt: serverTimestamp()
     });
   } catch (error) {
@@ -117,6 +127,24 @@ export const updateBookingInFirestore = async (bookingId: string, bookingData: B
     throw error;
   }
 };
+
+export const addCommunicationNoteToBooking = async (bookingId: string, note: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error("User not authenticated. Cannot add note.");
+  }
+  const bookingRef = doc(db, BOOKINGS_COLLECTION, bookingId);
+  try {
+    await updateDoc(bookingRef, {
+      communicationHistory: arrayUnion(note),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error(`Error adding communication note to booking ${bookingId}:`, error);
+    throw error;
+  }
+};
+
 
 export const deleteBookingFromFirestore = async (bookingId: string): Promise<void> => {
    const user = auth.currentUser;
