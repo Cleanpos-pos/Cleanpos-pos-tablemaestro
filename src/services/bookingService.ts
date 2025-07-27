@@ -76,7 +76,6 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
       ownerUID: user.uid, 
       createdAt: serverTimestamp(), 
     });
-    // Automatic email sending removed
     return docRef.id;
   } catch (error) {
     console.error("Error adding booking: ", error);
@@ -98,7 +97,6 @@ export const updateBookingInFirestore = async (bookingId: string, bookingData: B
         ...bookingData,
         updatedAt: serverTimestamp()
     });
-    // Automatic email sending removed
   } catch (error) {
     console.error("Error updating booking: ", error);
     throw error;
