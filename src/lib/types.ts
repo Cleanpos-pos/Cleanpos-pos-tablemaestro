@@ -57,8 +57,12 @@ export interface RestaurantProfileSettings {
   seoKeywords?: string | null;
 }
 
+export interface PlanSettings {
+    plan?: string | null;
+}
+
 // Combined type for the settings page form
-export type CombinedSettings = ReservationSettings & RestaurantProfileSettings;
+export type CombinedSettings = ReservationSettings & RestaurantProfileSettings & PlanSettings;
 
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning' | 'unavailable' | 'pending';
 

@@ -22,6 +22,7 @@ import Logo from "@/components/shared/Logo";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/config/firebase";
 import Link from "next/link";
+import { saveRestaurantSettings } from "@/services/settingsService";
 
 const signupFormSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -57,7 +58,13 @@ export default function SignupForm({ selectedPlan }: SignupFormProps) {
   async function onSubmit(values: z.infer<typeof signupFormSchema>) {
     form.clearErrors();
     try {
-      await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      
+      // After creating the user, save their selected plan
+      if (userCredential.user) {
+          await saveRestaurantSettings({ plan: selectedPlan || 'starter' });
+      }
+
       toast({
         title: "Account Created!",
         description: "Your account has been successfully created. You will be redirected to the dashboard.",

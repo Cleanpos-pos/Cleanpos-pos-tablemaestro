@@ -22,6 +22,9 @@ import {
   arrayUnion,
 } from 'firebase/firestore';
 import { PUBLIC_RESTAURANT_ID } from '@/config/constants';
+import { getRestaurantSettings } from './settingsService';
+import { sendUpgradePlanEmailAction } from '@/app/actions/emailActions';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 const BOOKINGS_COLLECTION = 'bookings';
 
@@ -89,6 +92,10 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
   // Otherwise, assign it to the logged-in admin.
   const ownerId = user ? user.uid : PUBLIC_RESTAURANT_ID;
   
+  if (user) {
+      await checkAndNotifyForUpgrade(user.uid);
+  }
+
   try {
     const docRef = await addDoc(collection(db, BOOKINGS_COLLECTION), {
       ...bookingData,
@@ -102,6 +109,46 @@ export const addBookingToFirestore = async (bookingData: BookingInput): Promise<
     throw error;
   }
 };
+
+async function checkAndNotifyForUpgrade(userId: string) {
+    try {
+        const settings = await getRestaurantSettings();
+        if (settings.plan !== 'starter') {
+            return;
+        }
+
+        const now = new Date();
+        const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+        
+        const bookingsQuery = query(
+            collection(db, BOOKINGS_COLLECTION),
+            where('ownerUID', '==', userId),
+            where('createdAt', '>=', weekStart),
+            where('createdAt', '<=', weekEnd)
+        );
+
+        const snapshot = await getDocs(bookingsQuery);
+        const weeklyBookings = snapshot.size;
+        const bookingLimit = 30;
+        const upgradeThreshold = 25;
+
+        if (weeklyBookings === upgradeThreshold) {
+            const user = auth.currentUser;
+            if (user && user.email) {
+                await sendUpgradePlanEmailAction(
+                    user.email,
+                    settings.restaurantName || "Your Restaurant",
+                    weeklyBookings,
+                    bookingLimit
+                );
+            }
+        }
+    } catch (error) {
+        console.error("Error checking for plan upgrade notification:", error);
+    }
+}
+
 
 export type BookingUpdateData = Partial<Omit<Booking, 'id' | 'createdAt' | 'ownerUID'>>;
 

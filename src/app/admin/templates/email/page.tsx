@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info, FileText, PlusSquare } from "lucide-react";
+import { Save, MailCheck, Send, Loader2, AlertTriangle, ListChecks, Info, FileText, PlusSquare, ArrowUpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { EmailTemplateInput } from "@/lib/types";
 import React, { useEffect, useState, useCallback, useRef } from "react";
@@ -30,7 +30,9 @@ import {
   NO_AVAILABILITY_TEMPLATE_ID,
   defaultNoAvailabilityPlaceholders,
   WAITING_LIST_TEMPLATE_ID,
-  defaultWaitingListPlaceholders
+  defaultWaitingListPlaceholders,
+  UPGRADE_PLAN_TEMPLATE_ID,
+  defaultUpgradePlanPlaceholders
 } from "@/services/templateService";
 import { getRestaurantSettings } from "@/services/settingsService"; // To fetch admin's own restaurant name
 import { auth } from "@/config/firebase";
@@ -99,7 +101,7 @@ const templateConfigurations: TemplateConfig[] = [
   },
   {
     id: WAITING_LIST_TEMPLATE_ID,
-    label: "Waiting List Confirmation",
+    label: "Waiting List",
     description: "Email sent when a guest is added to the waiting list.",
     icon: ListChecks,
     defaultPlaceholders: defaultWaitingListPlaceholders,
@@ -109,6 +111,18 @@ const templateConfigurations: TemplateConfig[] = [
         '{{requestedTime}}': "The approximate time the guest wishes to dine.",
         '{{partySize}}': "The number of guests in their party.",
         '{{estimatedWaitTime}}': "An estimated wait time (e.g., '30-45 minutes').",
+    }
+  },
+  {
+    id: UPGRADE_PLAN_TEMPLATE_ID,
+    label: "Upgrade Plan",
+    description: "Email sent when nearing the weekly booking limit on the Starter plan.",
+    icon: ArrowUpCircle,
+    defaultPlaceholders: defaultUpgradePlanPlaceholders,
+    placeholderDetails: {
+        '{{restaurantName}}': "The name of your restaurant.",
+        '{{bookingLimit}}': "The total weekly booking limit for the plan.",
+        '{{currentBookingCount}}': "The current number of bookings made this week.",
     }
   }
 ];
@@ -352,7 +366,7 @@ export default function EmailTemplatePage() {
       <h1 className="text-3xl font-headline text-foreground">Customize Email Templates</h1>
       
       <Tabs value={currentTemplateId} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto sm:h-10">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 h-auto sm:h-10">
           {templateConfigurations.map(template => (
             <TabsTrigger key={template.id} value={template.id} className="font-body py-2 sm:py-1.5">
               <template.icon className="mr-2 h-4 w-4 hidden sm:inline-block" />
@@ -524,4 +538,3 @@ export default function EmailTemplatePage() {
     </div>
   );
 }
-

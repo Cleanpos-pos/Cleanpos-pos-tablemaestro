@@ -14,6 +14,7 @@ const TEMPLATES_COLLECTION_NAME = 'emailTemplates';
 export const BOOKING_ACCEPTED_TEMPLATE_ID = 'bookingAccepted';
 export const NO_AVAILABILITY_TEMPLATE_ID = 'noAvailability';
 export const WAITING_LIST_TEMPLATE_ID = 'waitingList';
+export const UPGRADE_PLAN_TEMPLATE_ID = 'upgradePlan';
 
 export const defaultBookingAcceptedPlaceholders = [
   '{{guestName}}', 
@@ -58,6 +59,16 @@ const defaultWaitingListTemplateContent: EmailTemplateInput = {
   body: `Dear {{guestName}},\n\nYou have been added to the waitlist for {{restaurantName}} for {{partySize}} guests for {{requestedDate}} around {{requestedTime}}.\n\nYour estimated wait time is {{estimatedWaitTime}}.\n\nWe will notify you as soon as a table becomes available.\n\nSincerely,\nThe {{restaurantName}} Team`,
 };
 
+export const defaultUpgradePlanPlaceholders = [
+    '{{restaurantName}}',
+    '{{bookingLimit}}',
+    '{{currentBookingCount}}',
+];
+const defaultUpgradePlanTemplateContent: EmailTemplateInput = {
+    subject: 'Upgrade your plan at {{restaurantName}}',
+    body: `Hi,\n\nYou're nearing your weekly booking limit for {{restaurantName}}. You've used {{currentBookingCount}} out of {{bookingLimit}} bookings for the week.\n\nTo continue accepting unlimited bookings, please upgrade to our Pro plan.\n\nThanks,\nThe {{restaurantName}} Team`,
+};
+
 
 const getTemplateDocRef = (templateId: string) => {
   const user = auth.currentUser;
@@ -78,6 +89,8 @@ const getDefaultContentForTemplate = (templateId: string): { content: EmailTempl
       return { content: defaultNoAvailabilityTemplateContent, placeholders: defaultNoAvailabilityPlaceholders };
     case WAITING_LIST_TEMPLATE_ID:
       return { content: defaultWaitingListTemplateContent, placeholders: defaultWaitingListPlaceholders };
+    case UPGRADE_PLAN_TEMPLATE_ID:
+        return { content: defaultUpgradePlanTemplateContent, placeholders: defaultUpgradePlanPlaceholders };
     default:
       // Fallback to accepted/confirmation if ID is unknown, though UI should prevent this
       console.warn(`[templateService] Unknown templateId "${templateId}" in getDefaultContent. Falling back to bookingAccepted.`);

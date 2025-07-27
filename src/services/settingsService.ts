@@ -24,6 +24,7 @@ const defaultCombinedSettings: CombinedSettings = {
   seoH1: null,
   seoMetaDescription: null,
   seoKeywords: null,
+  plan: 'starter',
 };
 
 const defaultTimeSlot: TimeSlot = { name: 'Dinner', startTime: '17:00', endTime: '22:00' };
@@ -38,7 +39,7 @@ const defaultScheduleData: RestaurantSchedule = [
 ];
 
 
-export const saveRestaurantSettings = async (settings: CombinedSettings): Promise<void> => {
+export const saveRestaurantSettings = async (settings: Partial<CombinedSettings>): Promise<void> => {
   const user = auth.currentUser;
   if (!user) {
     console.error("[settingsService] No authenticated user found. Cannot save settings.");
@@ -49,25 +50,26 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
   console.log(`[settingsService] Saving settings for user ${user.uid} to doc ID ${settingsDocId}`);
 
   try {
-    const dataToSave: CombinedSettings = {
-      ...defaultCombinedSettings,
-      ...settings
-    };
+    const existingSettings = await getDoc(settingsRef);
+    const dataToSave: Partial<CombinedSettings> = { ...settings };
 
-    dataToSave.restaurantName = settings.restaurantName ?? null;
-    dataToSave.restaurantImageUrl = settings.restaurantImageUrl ?? null;
-    dataToSave.seoH1 = settings.seoH1 ?? null;
-    dataToSave.seoMetaDescription = settings.seoMetaDescription ?? null;
-    dataToSave.seoKeywords = settings.seoKeywords ?? null;
-
-    (Object.keys(defaultCombinedSettings) as Array<keyof CombinedSettings>).forEach(key => {
-        if (dataToSave[key] === undefined) {
-            (dataToSave as any)[key] = (defaultCombinedSettings as any)[key];
-             if (key === 'restaurantName' || key === 'restaurantImageUrl' || key === 'seoH1' || key === 'seoMetaDescription' || key === 'seoKeywords') {
-                (dataToSave as any)[key] = null;
-            }
-        }
-    });
+    // When a new user signs up, set defaults
+    if (!existingSettings.exists()) {
+        const personalizedDefaults = { 
+            ...defaultCombinedSettings, 
+            restaurantName: `${user.email?.split('@')[0]}'s Restaurant`,
+            plan: settings.plan || 'starter' // Carry over plan from signup
+        };
+        // Set dataToSave to the full default object if it's a new user
+        Object.assign(dataToSave, personalizedDefaults, settings);
+    }
+    
+    // Ensure nullable fields are handled correctly
+    dataToSave.restaurantName = settings.restaurantName ?? (dataToSave.restaurantName || null);
+    dataToSave.restaurantImageUrl = settings.restaurantImageUrl ?? (dataToSave.restaurantImageUrl || null);
+    dataToSave.seoH1 = settings.seoH1 ?? (dataToSave.seoH1 || null);
+    dataToSave.seoMetaDescription = settings.seoMetaDescription ?? (dataToSave.seoMetaDescription || null);
+    dataToSave.seoKeywords = settings.seoKeywords ?? (dataToSave.seoKeywords || null);
 
     await setDoc(settingsRef, {
       ...dataToSave,
@@ -105,6 +107,7 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
         seoH1: data.seoH1 ?? defaultCombinedSettings.seoH1,
         seoMetaDescription: data.seoMetaDescription ?? defaultCombinedSettings.seoMetaDescription,
         seoKeywords: data.seoKeywords ?? defaultCombinedSettings.seoKeywords,
+        plan: data.plan ?? defaultCombinedSettings.plan,
       };
 
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {

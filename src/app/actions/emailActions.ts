@@ -7,9 +7,11 @@ import {
     BOOKING_ACCEPTED_TEMPLATE_ID,
     NO_AVAILABILITY_TEMPLATE_ID,
     WAITING_LIST_TEMPLATE_ID,
+    UPGRADE_PLAN_TEMPLATE_ID,
     defaultBookingAcceptedPlaceholders, 
     defaultNoAvailabilityPlaceholders,
-    defaultWaitingListPlaceholders
+    defaultWaitingListPlaceholders,
+    defaultUpgradePlanPlaceholders
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
 // getSettingsById is removed as adminRestaurantName is passed directly
@@ -63,6 +65,12 @@ function getDummyDataForTemplate(
         partySize: 3,
         estimatedWaitTime: '30-45 minutes',
       };
+    case UPGRADE_PLAN_TEMPLATE_ID:
+        return {
+            ...commonData,
+            bookingLimit: 30,
+            currentBookingCount: 25,
+        }
     default:
       return commonData;
   }
@@ -328,4 +336,44 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     console.error(`[sendWaitingListEmailForBookingAction] Error:`, error);
     return { success: false, message: `Error sending email: ${errMsg}` };
   }
+}
+
+
+export async function sendUpgradePlanEmailAction(
+    recipientEmail: string,
+    restaurantName: string,
+    currentBookingCount: number,
+    bookingLimit: number
+): Promise<ActionResult> {
+    const templateId = UPGRADE_PLAN_TEMPLATE_ID;
+    console.log(`[sendUpgradePlanEmailAction] Initiated for ${recipientEmail}`);
+
+    try {
+        const template = await getEmailTemplate(templateId);
+        if (!template) {
+            return { success: false, message: `Upgrade email template not found.` };
+        }
+
+        const templateData = {
+            restaurantName,
+            bookingLimit,
+            currentBookingCount,
+        };
+
+        const subject = renderSimpleTemplate(template.subject, templateData);
+        const body = renderSimpleTemplate(template.body, templateData);
+        
+        const result = await sendEmail({ to: recipientEmail, subject, htmlContent: body, senderName: restaurantName });
+
+        if (result.success) {
+            console.log(`[sendUpgradePlanEmailAction] Upgrade email sent successfully to ${recipientEmail}.`);
+            return { success: true, message: `Upgrade email sent.` };
+        } else {
+            console.error(`[sendUpgradePlanEmailAction] Failed to send upgrade email:`, result.error);
+            return { success: false, message: result.error || "Unknown error sending upgrade email." };
+        }
+    } catch (error) {
+        console.error(`[sendUpgradePlanEmailAction] Error:`, error);
+        return { success: false, message: error instanceof Error ? error.message : "Unknown error." };
+    }
 }
