@@ -30,6 +30,8 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
     location: data.location, // Firestore returns null or the value, not undefined for missing fields
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
+    x: data.x,
+    y: data.y,
   } as Table;
 };
 
@@ -158,6 +160,21 @@ export const batchUpdateTableStatuses = async (tableIds: string[], status: Table
   tableIds.forEach(tableId => {
     const tableRef = doc(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`, tableId);
     batch.update(tableRef, { status: status, updatedAt: serverTimestamp() });
+  });
+  await batch.commit();
+};
+
+
+export const batchUpdateTableLayout = async (tables: Pick<Table, 'id' | 'x' | 'y'>[]): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error("User not authenticated.");
+
+  const batch = writeBatch(db);
+  tables.forEach(table => {
+    if (typeof table.x === 'number' && typeof table.y === 'number') {
+      const tableRef = doc(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`, table.id);
+      batch.update(tableRef, { x: table.x, y: table.y, updatedAt: serverTimestamp() });
+    }
   });
   await batch.commit();
 };

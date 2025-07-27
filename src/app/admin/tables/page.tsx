@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table as ShadcnTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Edit3, Trash2, Loader2, MoreHorizontal, AlertTriangle, Users, MapPin, Calendar as CalendarIconLucide, Tag } from "lucide-react";
+import { PlusCircle, Edit3, Trash2, Loader2, MoreHorizontal, AlertTriangle, Users, MapPin, Calendar as CalendarIconLucide, Tag, LayoutDashboard, List, Save } from "lucide-react";
 import type { Table, Booking } from "@/lib/types";
-import { getTables, deleteTable } from "@/services/tableService";
+import { getTables, deleteTable, batchUpdateTableLayout } from "@/services/tableService";
 import { getBookings } from "@/services/bookingService";
 import { useToast } from "@/hooks/use-toast";
 import AdminTableForm from "@/components/admin/AdminTableForm";
@@ -39,6 +39,9 @@ import { auth } from "@/config/firebase";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import FloorPlan from "@/components/admin/FloorPlan";
+
+type ViewMode = 'list' | 'layout';
 
 export default function TableManagementPage() {
   const [tables, setTables] = useState<Table[]>([]);
@@ -52,6 +55,9 @@ export default function TableManagementPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [tableToDelete, setTableToDelete] = useState<Table | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [updatedLayout, setUpdatedLayout] = useState<Record<string, {x: number, y: number}>>({});
+  const [isSavingLayout, setIsSavingLayout] = useState(false);
   const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -68,7 +74,6 @@ export default function TableManagementPage() {
       ]);
       setTables(fetchedTables);
       setBookings(fetchedBookings);
-      // Extract unique areas from tables and add "All"
       const uniqueAreas = ["All", ...Array.from(new Set(fetchedTables.map(t => t.location).filter(Boolean) as string[]))];
       setAreas(uniqueAreas);
     } catch (error) {
@@ -145,6 +150,33 @@ export default function TableManagementPage() {
       }
     }
   };
+  
+  const handleLayoutChange = (id: string, x: number, y: number) => {
+    setUpdatedLayout(prev => ({...prev, [id]: {x, y}}));
+  };
+
+  const handleSaveLayout = async () => {
+    setIsSavingLayout(true);
+    const tablesToUpdate = Object.entries(updatedLayout).map(([id, coords]) => ({ id, ...coords }));
+    
+    try {
+      await batchUpdateTableLayout(tablesToUpdate);
+      toast({
+        title: "Layout Saved",
+        description: "The new positions of your tables have been saved.",
+      });
+      setUpdatedLayout({});
+      fetchData(); // Re-fetch to get latest saved state
+    } catch(error) {
+       toast({
+        title: "Error Saving Layout",
+        description: `Could not save table positions: ${error instanceof Error ? error.message : String(error)}.`,
+        variant: "destructive",
+      });
+    } finally {
+        setIsSavingLayout(false);
+    }
+  };
 
   const getReservationForTable = (tableId: string, date: Date): Booking | undefined => {
     const formattedDate = format(date, "yyyy-MM-dd");
@@ -155,6 +187,8 @@ export default function TableManagementPage() {
         b.status !== 'completed'
     );
   };
+  
+  const isLayoutDirty = Object.keys(updatedLayout).length > 0;
 
   return (
     <div className="space-y-8">
@@ -163,30 +197,38 @@ export default function TableManagementPage() {
           <h1 className="text-3xl font-headline text-foreground">Table Management</h1>
           <p className="text-muted-foreground font-body mt-1">Define areas, manage tables, and view daily assignments.</p>
         </div>
-        <Dialog open={isFormOpen} onOpenChange={(open) => {
-          setIsFormOpen(open);
-          if (!open) setEditingTable(undefined);
-        }}>
-          <DialogTrigger asChild>
-            <Button className="btn-subtle-animate bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => { setEditingTable(undefined); setIsFormOpen(true);}}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New Table
+        <div className="flex items-center gap-2">
+           {viewMode === 'layout' && isLayoutDirty && (
+            <Button onClick={handleSaveLayout} disabled={isSavingLayout} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+              {isSavingLayout ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Layout
             </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[550px]">
-            <DialogHeader>
-              <DialogTitle className="font-headline">{editingTable ? "Edit Table" : "Add New Table"}</DialogTitle>
-              <DialogDescription className="font-body">
-                {editingTable ? `Update details for table "${editingTable.name}".` : "Enter details for a new restaurant table."}
-              </DialogDescription>
-            </DialogHeader>
-            <AdminTableForm
-                existingTable={editingTable}
-                onFormSubmit={handleFormSubmit}
-                onCancel={() => { setIsFormOpen(false); setEditingTable(undefined); }}
-                availableAreas={areas.filter(a => a !== "All")}
-            />
-          </DialogContent>
-        </Dialog>
+          )}
+          <Dialog open={isFormOpen} onOpenChange={(open) => {
+            setIsFormOpen(open);
+            if (!open) setEditingTable(undefined);
+          }}>
+            <DialogTrigger asChild>
+              <Button className="btn-subtle-animate bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => { setEditingTable(undefined); setIsFormOpen(true);}}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Table
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[550px]">
+              <DialogHeader>
+                <DialogTitle className="font-headline">{editingTable ? "Edit Table" : "Add New Table"}</DialogTitle>
+                <DialogDescription className="font-body">
+                  {editingTable ? `Update details for table "${editingTable.name}".` : "Enter details for a new restaurant table."}
+                </DialogDescription>
+              </DialogHeader>
+              <AdminTableForm
+                  existingTable={editingTable}
+                  onFormSubmit={handleFormSubmit}
+                  onCancel={() => { setIsFormOpen(false); setEditingTable(undefined); }}
+                  availableAreas={areas.filter(a => a !== "All")}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
       
       <Card className="shadow-lg rounded-xl">
@@ -219,11 +261,21 @@ export default function TableManagementPage() {
 
       <Tabs defaultValue="All" className="w-full">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-            <TabsList>
-              {areas.map(area => (
-                <TabsTrigger key={area} value={area} className="font-body">{area}</TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex items-center gap-4">
+              <TabsList>
+                {areas.map(area => (
+                  <TabsTrigger key={area} value={area} className="font-body">{area}</TabsTrigger>
+                ))}
+              </TabsList>
+              <div className="flex items-center rounded-md bg-muted p-1">
+                <Button variant={viewMode === 'list' ? "default": "ghost"} size="sm" onClick={() => setViewMode('list')} className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                  <List className="mr-2 h-4 w-4" /> List
+                </Button>
+                <Button variant={viewMode === 'layout' ? "default": "ghost"} size="sm" onClick={() => setViewMode('layout')} className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                  <LayoutDashboard className="mr-2 h-4 w-4" /> Layout
+                </Button>
+              </div>
+            </div>
             <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -257,7 +309,7 @@ export default function TableManagementPage() {
             <Card className="shadow-lg rounded-xl">
               <CardHeader>
                   <CardTitle className="font-headline">Tables in "{area}"</CardTitle>
-                  <CardDescription className="font-body">Live status and reservations for {format(selectedDate, "MMM d, yyyy")}.</CardDescription>
+                  <CardDescription className="font-body">Viewing in {viewMode} mode for {format(selectedDate, "MMM d, yyyy")}.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
@@ -266,6 +318,7 @@ export default function TableManagementPage() {
                     <p className="ml-2 font-body">Loading tables...</p>
                   </div>
                 ) : (
+                  viewMode === 'list' ? (
                   <ShadcnTable>
                     <TableHeader>
                       <TableRow>
@@ -334,6 +387,13 @@ export default function TableManagementPage() {
                         )}
                     </TableBody>
                   </ShadcnTable>
+                  ) : (
+                    <FloorPlan 
+                      tables={tables.filter(t => area === "All" || t.location === area)}
+                      onLayoutChange={handleLayoutChange}
+                      updatedLayout={updatedLayout}
+                    />
+                  )
                 )}
               </CardContent>
             </Card>
