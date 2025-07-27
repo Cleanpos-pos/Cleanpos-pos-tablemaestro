@@ -168,16 +168,18 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
         } catch (e) { console.warn(`Invalid date for Confirmation email: ${bookingDetails.date}`); }
     }
 
-    const templateData = {
+    const templateData: Record<string, any> = {
       guestName: bookingDetails.guestName,
       restaurantName: adminRestaurantName,
-      requestedDate: formattedDate,
       bookingDate: formattedDate,
-      requestedTime: bookingDetails.time,
       bookingTime: bookingDetails.time,
       partySize: bookingDetails.partySize,
-      notes: bookingDetails.notes || '', // Ensure notes is always a string
     };
+
+    // Only add notes to the template data if they actually exist and are not empty.
+    if (bookingDetails.notes && bookingDetails.notes.trim() !== '') {
+        templateData.notes = bookingDetails.notes;
+    }
 
     const subject = renderSimpleTemplate(template.subject, templateData);
     const body = renderSimpleTemplate(template.body, templateData);
@@ -300,7 +302,7 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     }
 
     const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
-    const result = await sendEmail(emailInput);
+    const result = await sendEmail( emailInput );
 
     return result.success 
       ? { success: true, message: `Waiting List email sent to ${recipientEmail}.` }
