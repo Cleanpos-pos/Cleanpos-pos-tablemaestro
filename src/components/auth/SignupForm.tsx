@@ -23,6 +23,7 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/config/firebase";
 import Link from "next/link";
 import { saveRestaurantSettings } from "@/services/settingsService";
+import { goToCheckout } from "@/services/paymentService";
 
 const signupFormSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -40,6 +41,8 @@ interface SignupFormProps {
 export default function SignupForm({ selectedPlan }: SignupFormProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -56,25 +59,27 @@ export default function SignupForm({ selectedPlan }: SignupFormProps) {
   }
 
   async function onSubmit(values: z.infer<typeof signupFormSchema>) {
+    setIsSubmitting(true);
     form.clearErrors();
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       
-      // After creating the user, save their selected plan
+      // This will sign the user in, so subsequent service calls will be authenticated
+      
+      // Save their selected plan to their settings
       if (userCredential.user) {
           await saveRestaurantSettings({ plan: selectedPlan || 'starter' });
       }
 
       toast({
         title: "Account Created!",
-        description: "Your account has been successfully created. You will be redirected to payment.",
+        description: "Redirecting you to payment to complete your subscription.",
       });
-      // In a real application, this is where you would redirect to Stripe Checkout.
-      // After successful payment, a webhook would update the user's role in Firestore.
-      // For now, we'll simulate this by redirecting to the dashboard.
-      // TODO: Replace with a call to a server action that creates a Stripe checkout session.
-      console.log("TODO: Redirect to Stripe Checkout for plan:", selectedPlan || 'starter');
-      router.push("/admin/dashboard");
+      
+      // Redirect to Stripe Checkout
+      await goToCheckout(selectedPlan || 'starter');
+      // The user will be redirected to Stripe, so the code below this may not execute if successful.
+
     } catch (error: any) {
       let errorMessage = "Sign up failed. Please try again.";
       if (error && error.code) {
@@ -101,6 +106,8 @@ export default function SignupForm({ selectedPlan }: SignupFormProps) {
       form.setValue("password","");
       form.setValue("confirmPassword","");
       console.error("Firebase signup error:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -167,8 +174,8 @@ export default function SignupForm({ selectedPlan }: SignupFormProps) {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full font-body text-lg py-6 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? (
+              <Button type="submit" className="w-full font-body text-lg py-6 btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
+                {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Creating Account...
                   </>
