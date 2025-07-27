@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table as ShadcnTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlusCircle, Edit3, Trash2, Loader2, MoreHorizontal, AlertTriangle, Users, MapPin, Calendar as CalendarIconLucide, Tag, LayoutDashboard, List, Save } from "lucide-react";
-import type { Table, Booking } from "@/lib/types";
+import type { Table, Booking, TableStatus } from "@/lib/types";
 import { getTables, deleteTable, batchUpdateTableLayout } from "@/services/tableService";
 import { getBookings } from "@/services/bookingService";
 import { useToast } from "@/hooks/use-toast";
@@ -190,16 +190,39 @@ export default function TableManagementPage() {
 
   const tablesForLayoutView = useMemo(() => {
     const formattedDate = format(selectedDate, "yyyy-MM-dd");
-    const bookedTableIds = new Set(
-      bookings
-        .filter(b => b.date === formattedDate && b.tableId && b.status !== 'cancelled' && b.status !== 'completed')
-        .map(b => b.tableId)
-    );
+    const dateBookings = bookings.filter(b => b.date === formattedDate && b.tableId && b.status !== 'cancelled' && b.status !== 'completed');
+    
+    const tableBookingMap = new Map<string, Booking>();
+    // Prioritize seated > confirmed > pending
+    for (const booking of dateBookings) {
+      if (!booking.tableId) continue;
+      const existing = tableBookingMap.get(booking.tableId);
+      if (!existing) {
+        tableBookingMap.set(booking.tableId, booking);
+      } else {
+        const priority = { 'seated': 3, 'confirmed': 2, 'pending': 1, 'completed': 0, 'cancelled': 0 };
+        if ((priority[booking.status] || 0) > (priority[existing.status] || 0)) {
+           tableBookingMap.set(booking.tableId, booking);
+        }
+      }
+    }
 
-    return tables.map(table => ({
-      ...table,
-      status: bookedTableIds.has(table.id) ? 'reserved' : table.status,
-    }));
+    const bookingStatusToTableStatus: Record<string, TableStatus> = {
+      pending: 'pending',
+      confirmed: 'reserved',
+      seated: 'occupied'
+    };
+    
+    return tables.map(table => {
+      const booking = tableBookingMap.get(table.id);
+      if (booking) {
+        const newStatus = bookingStatusToTableStatus[booking.status];
+        if (newStatus) {
+            return { ...table, status: newStatus };
+        }
+      }
+      return table; // Return original table if no booking or no matching status
+    });
   }, [tables, bookings, selectedDate]);
   
   const isLayoutDirty = Object.keys(updatedLayout).length > 0;
@@ -436,5 +459,7 @@ export default function TableManagementPage() {
     </div>
   );
 }
+
+    
 
     
