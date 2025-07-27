@@ -187,6 +187,20 @@ export default function TableManagementPage() {
         b.status !== 'completed'
     );
   };
+
+  const tablesForLayoutView = useMemo(() => {
+    const formattedDate = format(selectedDate, "yyyy-MM-dd");
+    const bookedTableIds = new Set(
+      bookings
+        .filter(b => b.date === formattedDate && b.tableId && b.status !== 'cancelled' && b.status !== 'completed')
+        .map(b => b.tableId)
+    );
+
+    return tables.map(table => ({
+      ...table,
+      status: bookedTableIds.has(table.id) ? 'reserved' : table.status,
+    }));
+  }, [tables, bookings, selectedDate]);
   
   const isLayoutDirty = Object.keys(updatedLayout).length > 0;
 
@@ -389,7 +403,7 @@ export default function TableManagementPage() {
                   </ShadcnTable>
                   ) : (
                     <FloorPlan 
-                      tables={tables.filter(t => area === "All" || t.location === area)}
+                      tables={tablesForLayoutView.filter(t => area === "All" || t.location === area)}
                       onLayoutChange={handleLayoutChange}
                       updatedLayout={updatedLayout}
                     />
@@ -422,3 +436,5 @@ export default function TableManagementPage() {
     </div>
   );
 }
+
+    
