@@ -310,5 +310,3 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     return { success: false, message: `Error sending email: ${errMsg}` };
   }
 }
-
-    
