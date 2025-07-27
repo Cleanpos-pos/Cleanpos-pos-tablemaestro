@@ -7,30 +7,30 @@ import Logo from "@/components/shared/Logo";
 
 const plans = [
   {
-    name: "Basic",
-    price: "$49",
-    pricePeriod: "/ month",
+    name: "Starter",
+    price: "£5",
+    pricePeriod: "/ week",
     description: "Perfect for small restaurants getting started.",
     features: [
+      "Up to 25 Bookings / month",
       "Booking Management",
       "Table Management",
       "Customer Database",
-      "Basic Analytics",
     ],
     cta: "Get Started",
-    href: "/signup?plan=basic",
+    href: "/signup?plan=starter",
   },
   {
     name: "Pro",
-    price: "$99",
-    pricePeriod: "/ month",
+    price: "£10",
+    pricePeriod: "/ week",
     description: "For growing restaurants that need more power and features.",
     features: [
-      "Everything in Basic",
+      "Unlimited Bookings",
+      "Everything in Starter",
       "AI Waitlist Assistant",
       "Advanced Analytics",
       "Email Customization",
-      "Priority Support",
     ],
     cta: "Choose Pro",
     href: "/signup?plan=pro",
@@ -75,7 +75,7 @@ export default function PricingPage() {
 
         <section className="py-12 md:py-20">
           <div className="container mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {plans.map((plan) => (
                 <Card
                   key={plan.name}
