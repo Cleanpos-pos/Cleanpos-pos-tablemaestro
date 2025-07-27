@@ -68,8 +68,6 @@ export interface Table {
   location?: string; // e.g., "Main Dining", "Patio", "Bar" - Optional for now
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
-  x?: number; // Optional: x-coordinate for floor plan
-  y?: number; // Optional: y-coordinate for floor plan
 }
 
 export type TableInput = Omit<Table, 'id' | 'createdAt' | 'updatedAt'>;
