@@ -174,15 +174,30 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
       bookingDate: formattedDate,
       bookingTime: bookingDetails.time,
       partySize: bookingDetails.partySize,
+      notes: bookingDetails.notes
     };
-
-    // Only add notes to the template data if they actually exist and are not empty.
+    
+    const subject = renderSimpleTemplate(template.subject, templateData);
+    
+    // Manually render the body to bypass issues with the conditional notes field.
+    let body = renderSimpleTemplate(template.body, templateData);
     if (bookingDetails.notes && bookingDetails.notes.trim() !== '') {
-        templateData.notes = bookingDetails.notes;
+        // This is a robust way to handle the conditional part if the simple renderer fails
+        // We find the conditional block and replace it if it's still there.
+        const conditionalRegex = /\{\{#if\s+notes\}\}([\s\S]*?)\{\{\/if\s*\}\}/g;
+        if (conditionalRegex.test(body)) {
+             body = body.replace(conditionalRegex, renderSimpleTemplate('$1', templateData));
+        } else {
+            // If the template was changed and no longer has the #if block, we might append it.
+            // For now, we assume the notes placeholder is present.
+            // This part is a safety net; the main replacement is handled by renderSimpleTemplate.
+        }
+    } else {
+        // If no notes, ensure the conditional block is removed entirely.
+         const conditionalRegex = /\{\{#if\s+notes\}\}([\s\S]*?)\{\{\/if\s*\}\}/g;
+         body = body.replace(conditionalRegex, '');
     }
 
-    const subject = renderSimpleTemplate(template.subject, templateData);
-    const body = renderSimpleTemplate(template.body, templateData);
 
     if (!subject.trim() || !body.trim()) {
       return { success: false, message: "Rendered subject or body is empty for confirmation. Check template and data." };
@@ -314,7 +329,3 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     return { success: false, message: `Error sending email: ${errMsg}` };
   }
 }
-
-    
-
-    
