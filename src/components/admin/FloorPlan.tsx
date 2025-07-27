@@ -10,7 +10,7 @@ import TableStatusBadge from './TableStatusBadge';
 import { Users, SquareStack } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const GRID_SIZE = 20;
+const GRID_SIZE = 10;
 
 interface DraggableTableProps {
   table: Table;
@@ -52,8 +52,8 @@ export default function FloorPlan({ tables, onLayoutChange, updatedLayout }: Flo
     const positions: Record<string, { x: number, y: number }> = {};
     tables.forEach((table, index) => {
       positions[table.id] = {
-        x: table.x ?? (index % 8) * (100 + GRID_SIZE), // Default positioning if not set
-        y: table.y ?? Math.floor(index / 8) * (80 + GRID_SIZE),
+        x: table.x ?? (index % 10) * (50 + GRID_SIZE * 2), // Default positioning if not set
+        y: table.y ?? Math.floor(index / 10) * (40 + GRID_SIZE * 2),
       };
     });
     return positions;
@@ -105,19 +105,19 @@ export default function FloorPlan({ tables, onLayoutChange, updatedLayout }: Flo
           return (
             <DraggableTable key={table.id} table={table} initialPosition={pos}>
               <div className={cn(
-                  "w-[100px] h-[80px] rounded-lg shadow-md cursor-grab active:cursor-grabbing p-2 flex flex-col justify-between transition-colors",
+                  "w-[80px] h-[50px] rounded-md shadow-md cursor-grab active:cursor-grabbing p-1.5 flex flex-col justify-between transition-colors text-xs",
                   table.status === 'available' && 'bg-green-100 border-green-400',
                   table.status === 'occupied' && 'bg-red-100 border-red-400',
                   table.status === 'reserved' && 'bg-blue-100 border-blue-400',
                   table.status === 'pending' && 'bg-orange-100 border-orange-400',
                   (table.status === 'cleaning' || table.status === 'unavailable') && 'bg-gray-200 border-gray-400',
               )}>
-                <div className="flex justify-between items-center text-sm font-bold">
-                  <span className="flex items-center gap-1"><SquareStack className="h-3 w-3"/> {table.name}</span>
-                  <span className="flex items-center gap-1"><Users className="h-3 w-3"/> {table.capacity}</span>
+                <div className="flex justify-between items-center font-bold">
+                  <span className="flex items-center gap-1 truncate"><SquareStack className="h-3 w-3 shrink-0"/> <span className="truncate">{table.name}</span></span>
+                  <span className="flex items-center gap-1"><Users className="h-3 w-3 shrink-0"/> {table.capacity}</span>
                 </div>
                 <div className="text-center">
-                  <TableStatusBadge status={table.status} />
+                  <TableStatusBadge status={table.status} className="px-1.5 py-0 text-[10px]" />
                 </div>
               </div>
             </DraggableTable>
