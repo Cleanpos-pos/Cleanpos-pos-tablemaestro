@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -70,6 +69,12 @@ export default function AdminSidebar() {
     }
   };
 
+  const handleLinkClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r">
       <SidebarHeader className="flex items-center justify-between p-4">
@@ -90,7 +95,7 @@ export default function AdminSidebar() {
                 tooltip={item.label}
                 className="font-body"
               >
-                <Link href={item.href}>
+                <Link href={item.href} onClick={handleLinkClick}>
                   <item.icon className="h-5 w-5" />
                   <span>{item.label}</span>
                 </Link>
