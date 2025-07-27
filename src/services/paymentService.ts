@@ -17,28 +17,25 @@ import {
 // Price IDs from your Stripe account.
 // Make sure these are the correct IDs for the mode (Test vs. Live)
 // that your Firebase extension is configured with.
-//
-// Starter Plan: Corresponds to £20/month price
-// Pro Plan: Corresponds to £40/month price
 // =================================================================================
 const priceIds = {
-  starter: 'price_1RpVuKBIjn0fCSSg59S4Fx0M',
-  pro: 'price_1RpVv5BIjn0fCSSgxeDxX4DW',
+  starter: 'price_1RpVuKBIjn0fCSSg59S4Fx0M', // Corresponds to £20/month
+  pro: 'price_1RpVv5BIjn0fCSSgxeDxX4DW',     // Corresponds to £40/month
 };
 type PlanId = keyof typeof priceIds;
 
 
 /**
- * Verifies if a given Price ID has been synced from Stripe to Firestore.
+ * Verifies if a given Price ID has been synced from Stripe to Firestore by the extension.
  * This is a crucial pre-flight check to ensure we don't try to create a checkout
- * for a price that doesn't exist or hasn't been synced by the extension yet.
+ * for a price that doesn't exist or hasn't been synced.
  * @param priceId The Stripe Price ID to check.
  * @returns {Promise<boolean>} True if the price exists, false otherwise.
  */
 async function verifyPriceExistsInFirestore(priceId: string): Promise<boolean> {
   try {
-    // The Stripe extension docs can be ambiguous. It might use 'products' or 'subscription'.
-    // We will check both common collection names to be robust.
+    // The Stripe extension can be configured to use different top-level collections.
+    // We will check the most common ones: 'products' and 'subscription'.
     const collectionsToSearch = ['products', 'subscription'];
 
     for (const collectionName of collectionsToSearch) {
@@ -49,16 +46,16 @@ async function verifyPriceExistsInFirestore(priceId: string): Promise<boolean> {
           const priceRef = doc(db, productDoc.ref.path, 'prices', priceId);
           const priceSnap = await getDoc(priceRef);
           if (priceSnap.exists()) {
-            console.log(`[paymentService] Verified priceId "${priceId}" exists in Firestore collection "${collectionName}" for product "${productDoc.id}".`);
+            console.log(`[paymentService] SUCCESS: Verified priceId "${priceId}" exists in Firestore collection "${collectionName}" for product "${productDoc.id}".`);
             return true;
           }
         }
     }
 
-    console.warn(`[paymentService] PriceId "${priceId}" was NOT found in the 'prices' sub-collection of any active product in either 'products' or 'subscription' collections.`);
+    console.warn(`[paymentService] FAILED: PriceId "${priceId}" was NOT found in the 'prices' sub-collection of any active product in either 'products' or 'subscription' collections. This is a configuration issue.`);
     return false;
   } catch (error) {
-    console.error("[paymentService] Error verifying price in Firestore:", error);
+    console.error("[paymentService] CRITICAL ERROR during verifyPriceExistsInFirestore. This might be a Firestore rules issue or a database connection problem.", error);
     // If we can't verify, it's safer to assume it doesn't exist to prevent calls with bad IDs.
     return false;
   }
@@ -89,10 +86,14 @@ export const createCheckoutRedirect = async (plan: string): Promise<void> => {
   // Verify the price exists in Firestore before proceeding
   const priceExists = await verifyPriceExistsInFirestore(selectedPriceId);
   if (!priceExists) {
-    const errorMessage = `The price for plan "${plan}" (ID: ${selectedPriceId}) was not found in the database. This could be due to a misconfiguration:
-1. Ensure the Price ID is correct and active in your Stripe Dashboard.
-2. Check that your Stripe webhook is correctly configured and syncing products to Firestore.
-3. Verify your Firebase extension is connected to the correct Stripe mode (Test vs. Live).`;
+    const errorMessage = `The price for plan "${plan}" (ID: ${selectedPriceId}) was not found in your Firestore database. This is a configuration issue between Stripe and Firebase.
+
+Please check the following:
+1. In your Stripe Dashboard, ensure the Price ID is correct and the product is "Active".
+2. In your Stripe Webhooks dashboard, ensure your webhook is enabled, pointing to the correct Firebase function URL, and is listening for "product.created/updated" and "price.created/updated" events. Check for any failed webhook events.
+3. In your Firebase Extensions configuration, ensure you are using API keys from the correct Stripe mode (Test vs. Live).
+
+Once you've confirmed your setup, try updating the product description in Stripe to trigger a new sync.`;
     console.error(`[paymentService] Pre-flight check failed: ${errorMessage}`);
     alert(errorMessage);
     return;
