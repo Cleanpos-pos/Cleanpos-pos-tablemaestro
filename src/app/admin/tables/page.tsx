@@ -42,6 +42,7 @@ export default function TableManagementPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [editingTable, setEditingTable] = useState<Table | undefined>(undefined);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [tableToDelete, setTableToDelete] = useState<Table | null>(null);
@@ -178,7 +179,7 @@ export default function TableManagementPage() {
                 <CardTitle className="font-headline">Table Reservations</CardTitle>
                 <CardDescription className="font-body mt-1">Select a date to view reservations. The "Live Status" reflects the real-time state.</CardDescription>
             </div>
-            <Popover>
+            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant={"outline"}
@@ -195,7 +196,10 @@ export default function TableManagementPage() {
                 <Calendar
                   mode="single"
                   selected={selectedDate}
-                  onSelect={(date) => setSelectedDate(date || new Date())}
+                  onSelect={(date) => {
+                    setSelectedDate(date || new Date());
+                    setIsDatePickerOpen(false);
+                  }}
                   initialFocus
                 />
               </PopoverContent>
