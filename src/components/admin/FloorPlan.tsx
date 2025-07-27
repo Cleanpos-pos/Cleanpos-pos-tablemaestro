@@ -86,6 +86,7 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
             return { ...table, status: newStatus };
         }
       }
+      // If no booking, return the table with its live status from the database
       return table; 
     });
   }, [allTables, allBookings, selectedDate]);
