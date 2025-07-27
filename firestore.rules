@@ -1,41 +1,66 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Stripe Customer and Subscription Data
+    // Rules from the "Run Payments with Stripe" Firebase Extension documentation.
+    // This allows users to read their own customer and subscription data, and to
+    // create checkout sessions for themselves. It prevents users from accessing
+    // other users' payment information.
+    match /customers/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
 
-    // Helper function to check if a user is an admin.
-    // An admin is a user whose UID exists as a document ID in the 'admins' collection.
-    function isAdmin() {
-      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      match /checkout_sessions/{id} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+      match /subscriptions/{id} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+      }
     }
 
-    // Restaurant Configuration (Settings & Schedule):
-    // Documents in 'restaurantConfig' are named by the user's UID.
-    // Allow an authenticated user to read and write *only their own* configuration document.
-    match /restaurantConfig/{userId} {
+    // Public-facing product and pricing information synced from Stripe.
+    // This allows any user (authenticated or not) to read the list of available
+    // products and their prices, which is necessary for the pricing page.
+    match /products/{id} {
+      allow read: if true;
+      
+      match /prices/{id} {
+        allow read: if true;
+      }
+    }
+    
+    // Restaurant Configuration Data
+    // This collection stores settings, schedules, and tables for each restaurant owner.
+    // The rule ensures that only the authenticated owner can read or write their own configuration.
+    match /restaurantConfig/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+    
+    // Public Restaurant Settings (for homepage, booking page, etc.)
+    // This allows public read-only access to a specific document containing the
+    // general information for the restaurant, like its name and branding.
+    match /restaurantConfig/mainRestaurant {
+      allow get: if true;
+      allow list, create, update, delete: if false; // Prevent public writes
+    }
 
-    // Bookings:
-    // All booking operations (create, read, update, delete) are restricted to admins.
+    // Bookings Data
+    // This ensures that new bookings are created with the correct owner UID, and that
+    // owners can only manage bookings that belong to them.
     match /bookings/{bookingId} {
-      allow read, create, update, delete: if isAdmin();
+      // Allow creation if the new booking's ownerUID matches the person making the request
+      allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
+      // Allow read, update, delete if the logged-in user is the owner of the booking
+      allow read, update, delete: if request.auth != null && resource.data.ownerUID == request.auth.uid;
     }
-
-    // Admins collection:
-    // - Stores UIDs of admin users.
-    // - Only existing admins can read or manage (add/remove) other admins.
-    // - IMPORTANT: The first admin(s) must be added manually via the Firebase Console.
-    //   The Document ID in the 'admins' collection should be the user's Firebase Auth UID.
-    match /admins/{adminId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Default deny all other paths for security.
-    // This ensures that any path not explicitly matched above is not accessible.
-    match /{document=**} {
-      allow read, write: if false;
+    
+    // Forum Posts
+    // This ensures users can only create posts as themselves, and can only see their own posts.
+    match /forumPosts/{postId} {
+        allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
+        allow read: if request.auth != null && resource.data.ownerUID == request.auth.uid;
+        allow update, delete: if false; // Disallow updates/deletes for now.
     }
   }
 }
