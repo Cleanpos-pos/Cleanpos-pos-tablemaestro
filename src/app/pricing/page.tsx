@@ -12,7 +12,7 @@ const plans = [
     pricePeriod: "/ week",
     description: "Perfect for small restaurants getting started.",
     features: [
-      "Up to 25 Bookings / month",
+      "30 Bookings / week",
       "Booking Management",
       "Table Management",
       "Customer Database",
