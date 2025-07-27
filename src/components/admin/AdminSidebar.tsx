@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -27,6 +28,7 @@ import {
   LineChart,
   Table as TableIcon,
   FileText,
+  MessageSquare,
 } from "lucide-react";
 import { auth } from "@/config/firebase";
 import { signOut } from "firebase/auth";
@@ -39,6 +41,7 @@ const menuItems = [
   { href: "/admin/data", label: "Data", icon: LineChart },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/templates/email", label: "Email Templates", icon: FileText },
+  { href: "/admin/forum", label: "Forum", icon: MessageSquare },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

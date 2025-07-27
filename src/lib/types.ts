@@ -93,3 +93,16 @@ export interface EmailTemplate {
 export type EmailTemplateInput = Pick<EmailTemplate, 'subject' | 'body'>;
 
 export type BookingInput = Omit<Booking, 'id' | 'createdAt' | 'ownerUID'>;
+
+export interface ForumPost {
+    id: string;
+    title: string;
+    content: string;
+    type: 'bug' | 'feature';
+    status: 'open' | 'in-progress' | 'closed';
+    createdAt: string; // ISO string
+    ownerUID: string;
+    ownerEmail?: string;
+}
+
+export type ForumPostInput = Omit<ForumPost, 'id' | 'createdAt' | 'ownerUID' | 'status' | 'ownerEmail'>;
