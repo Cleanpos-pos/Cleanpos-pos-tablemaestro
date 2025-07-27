@@ -153,7 +153,7 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
   if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
 
   try {
-    const template = await getEmailTemplate(templateId); // This fetches template for current admin based on their UID implicitly
+    const template = await getEmailTemplate(templateId); 
     if (!template || !template.subject || !template.body) {
       return { success: false, message: `"${templateId}" template not found or incomplete.` };
     }
@@ -171,12 +171,11 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
     const templateData = {
       guestName: bookingDetails.guestName,
       restaurantName: adminRestaurantName,
-      bookingDate: formattedDate,
       requestedDate: formattedDate,
-      bookingTime: bookingDetails.time,
+      bookingDate: formattedDate,
       requestedTime: bookingDetails.time,
+      bookingTime: bookingDetails.time,
       partySize: bookingDetails.partySize,
-      requestedPartySize: bookingDetails.partySize,
       notes: bookingDetails.notes || '', // Ensure notes is always a string
     };
 
@@ -313,5 +312,7 @@ export async function sendWaitingListEmailForBookingAction(params: BookingEmailP
     return { success: false, message: `Error sending email: ${errMsg}` };
   }
 }
+
+    
 
     
