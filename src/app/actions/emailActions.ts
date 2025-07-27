@@ -172,8 +172,11 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
       guestName: bookingDetails.guestName,
       restaurantName: adminRestaurantName,
       bookingDate: formattedDate,
+      requestedDate: formattedDate,
       bookingTime: bookingDetails.time,
+      requestedTime: bookingDetails.time,
       partySize: bookingDetails.partySize,
+      requestedPartySize: bookingDetails.partySize,
       notes: bookingDetails.notes || '', // Ensure notes is always a string
     };
 
