@@ -106,22 +106,15 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      const dbGalleryUrls = (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls)) ? data.restaurantGalleryUrls : [];
+
       const mergedSettings: CombinedSettings = {
         ...defaultCombinedSettings,
         ...data,
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
-        restaurantGalleryUrls: (data.restaurantGalleryUrls && Array.isArray(data.restaurantGalleryUrls)
-                                ? data.restaurantGalleryUrls
-                                : defaultCombinedSettings.restaurantGalleryUrls!
-                              ).map((url: string | null | undefined) => url ?? null).slice(0,6),
+        restaurantGalleryUrls: Array.from({ length: 6 }).map((_, i) => dbGalleryUrls[i] ?? null),
       };
-      if (mergedSettings.restaurantGalleryUrls.length < 6) {
-        mergedSettings.restaurantGalleryUrls = [
-            ...mergedSettings.restaurantGalleryUrls,
-            ...Array(6 - mergedSettings.restaurantGalleryUrls.length).fill(null)
-        ];
-      }
 
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {
         console.log(`[settingsService][getSettingsById] Found PUBLIC restaurant settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
@@ -228,4 +221,3 @@ export const getRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
 export const getPublicRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
   return getScheduleById(PUBLIC_RESTAURANT_ID);
 };
-
