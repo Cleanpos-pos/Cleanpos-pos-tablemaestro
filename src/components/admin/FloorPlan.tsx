@@ -53,7 +53,7 @@ interface FloorPlanProps {
 
 export default function FloorPlan({ allTables, allBookings, selectedDate, onLayoutChange, updatedLayout }: FloorPlanProps) {
   
-  const tablesWithCorrectStatus = useMemo(() => {
+    const tablesWithCorrectStatus = useMemo(() => {
     const formattedDate = format(selectedDate, "yyyy-MM-dd");
     const dateBookings = allBookings.filter(b => b.date === formattedDate && b.tableId && b.status !== 'cancelled' && b.status !== 'completed');
     
@@ -97,8 +97,8 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
     const initialPositions: Record<string, { x: number, y: number }> = {};
     allTables.forEach((table, index) => {
       initialPositions[table.id] = {
-        x: table.x ?? (index % 10) * (40 + GRID_SIZE * 2),
-        y: table.y ?? Math.floor(index / 10) * (25 + GRID_SIZE * 2),
+        x: table.x ?? (index % 5) * (80 + GRID_SIZE * 2), // Adjusted for smaller tables
+        y: table.y ?? Math.floor(index / 5) * (50 + GRID_SIZE * 2), // Adjusted for smaller tables
       };
     });
     setPositions(initialPositions);
