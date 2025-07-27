@@ -29,6 +29,7 @@ import {
   Table as TableIcon,
   FileText,
   MessageSquare,
+  Package,
 } from "lucide-react";
 import { auth } from "@/config/firebase";
 import { signOut } from "firebase/auth";
@@ -38,7 +39,7 @@ const menuItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/bookings", label: "Bookings", icon: BookOpenText },
   { href: "/admin/tables", label: "Tables", icon: TableIcon },
-  { href: "/admin/data", label: "Data", icon: LineChart },
+  { href: "/admin/data", label: "Stripe Sync", icon: Package },
   { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/templates/email", label: "Email Templates", icon: FileText },
   { href: "/admin/forum", label: "Forum", icon: MessageSquare },
