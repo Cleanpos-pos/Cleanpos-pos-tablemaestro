@@ -28,7 +28,6 @@ const plans = [
     features: [
       "Unlimited Bookings",
       "Everything in Starter",
-      "AI Waitlist Assistant",
       "Advanced Analytics",
       "Email Customization",
     ],

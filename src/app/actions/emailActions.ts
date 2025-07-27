@@ -1,7 +1,7 @@
 
 'use server';
 
-import { sendEmail, type SendEmailInput, type SendEmailOutput } from '@/ai/flows/sendEmailFlow';
+import { sendEmail, type SendEmailInput, type SendEmailOutput } from '@/services/emailService';
 import { 
     getEmailTemplate, 
     BOOKING_ACCEPTED_TEMPLATE_ID,
@@ -110,7 +110,7 @@ export async function sendTestEmailAction(
       senderName: adminRestaurantName, 
     };
 
-    console.log(`[sendTestEmailAction] Calling sendEmail flow with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "...", senderName: emailInput.senderName});
+    console.log(`[sendTestEmailAction] Calling sendEmail with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "...", senderName: emailInput.senderName});
     const result: SendEmailOutput = await sendEmail(emailInput);
 
     if (result.success) {
@@ -118,7 +118,7 @@ export async function sendTestEmailAction(
       return { success: true, message: `Test email sent successfully to ${recipientEmail} from "${adminRestaurantName}". Brevo Message ID: ${result.messageId || 'N/A'}` };
     } else {
       console.error(`[sendTestEmailAction] Failed to send test email: ${result.error}`);
-      return { success: false, message: `Failed to send test email: ${result.error || 'Unknown error from email flow'}` };
+      return { success: false, message: `Failed to send test email: ${result.error || 'Unknown error from email service'}` };
     }
   } catch (error) {
     console.error('[sendTestEmailAction] Unexpected error:', error);
