@@ -10,8 +10,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 
-const SETTINGS_COLLECTION = 'restaurantConfig';
-
 // Default settings, useful for new users or if data is somehow missing
 const defaultCombinedSettings: CombinedSettings = {
   minAdvanceReservationHours: 2,
@@ -22,6 +20,9 @@ const defaultCombinedSettings: CombinedSettings = {
   restaurantName: "My Restaurant",
   restaurantImageUrl: null,
   restaurantGalleryUrls: Array(6).fill(null),
+  seoH1: null,
+  seoMetaDescription: null,
+  seoKeywords: null,
 };
 
 const defaultTimeSlot: TimeSlot = { name: 'Dinner', startTime: '17:00', endTime: '22:00' };
@@ -54,6 +55,10 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
 
     dataToSave.restaurantName = settings.restaurantName ?? null;
     dataToSave.restaurantImageUrl = settings.restaurantImageUrl ?? null;
+    dataToSave.seoH1 = settings.seoH1 ?? null;
+    dataToSave.seoMetaDescription = settings.seoMetaDescription ?? null;
+    dataToSave.seoKeywords = settings.seoKeywords ?? null;
+
 
     if (settings.restaurantGalleryUrls && Array.isArray(settings.restaurantGalleryUrls)) {
       dataToSave.restaurantGalleryUrls = settings.restaurantGalleryUrls.map(url => url ?? null);
@@ -70,7 +75,7 @@ export const saveRestaurantSettings = async (settings: CombinedSettings): Promis
     (Object.keys(defaultCombinedSettings) as Array<keyof CombinedSettings>).forEach(key => {
         if (dataToSave[key] === undefined) {
             (dataToSave as any)[key] = (defaultCombinedSettings as any)[key];
-             if (key === 'restaurantName' || key === 'restaurantImageUrl') {
+             if (key === 'restaurantName' || key === 'restaurantImageUrl' || key === 'seoH1' || key === 'seoMetaDescription' || key === 'seoKeywords') {
                 (dataToSave as any)[key] = null;
             }
             if (key === 'restaurantGalleryUrls' && !(dataToSave[key])) {
@@ -114,6 +119,9 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
         restaurantName: data.restaurantName ?? defaultCombinedSettings.restaurantName,
         restaurantImageUrl: data.restaurantImageUrl ?? defaultCombinedSettings.restaurantImageUrl,
         restaurantGalleryUrls: Array.from({ length: 6 }).map((_, i) => dbGalleryUrls[i] || null),
+        seoH1: data.seoH1 ?? defaultCombinedSettings.seoH1,
+        seoMetaDescription: data.seoMetaDescription ?? defaultCombinedSettings.seoMetaDescription,
+        seoKeywords: data.seoKeywords ?? defaultCombinedSettings.seoKeywords,
       };
 
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {

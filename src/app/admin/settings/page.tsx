@@ -15,8 +15,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, GalleryHorizontalEnd } from "lucide-react";
+import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, GalleryHorizontalEnd, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CombinedSettings } from "@/lib/types";
 import Image from "next/image";
@@ -41,6 +42,9 @@ const restaurantProfileSchema = z.object({
     .default(null),
   restaurantImageUrl: z.string().url("Invalid URL for main image.").nullable().optional(),
   restaurantGalleryUrls: z.array(z.string().url("Invalid URL for gallery image.").nullable()).max(6, "Maximum 6 gallery images.").optional().default(Array(6).fill(null)),
+  seoH1: z.string().max(70, "H1 tag should be concise.").transform(val => val === "" ? null : val).nullable().optional(),
+  seoMetaDescription: z.string().max(160, "Description should be under 160 characters.").transform(val => val === "" ? null : val).nullable().optional(),
+  seoKeywords: z.string().max(250, "Keywords list is too long.").transform(val => val === "" ? null : val).nullable().optional(),
 });
 
 const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema);
@@ -54,6 +58,9 @@ const defaultSettingsData: CombinedSettings = {
   restaurantName: "My Restaurant",
   restaurantImageUrl: null,
   restaurantGalleryUrls: Array(6).fill(null),
+  seoH1: null,
+  seoMetaDescription: null,
+  seoKeywords: null,
 };
 
 export default function SettingsPage() {
@@ -95,6 +102,9 @@ export default function SettingsPage() {
             restaurantName: settings.restaurantName ?? null,
             restaurantImageUrl: settings.restaurantImageUrl ?? null,
             restaurantGalleryUrls: (settings.restaurantGalleryUrls && settings.restaurantGalleryUrls.length <= 6 ? settings.restaurantGalleryUrls : Array(6).fill(null)).map(url => url ?? null),
+            seoH1: settings.seoH1 ?? null,
+            seoMetaDescription: settings.seoMetaDescription ?? null,
+            seoKeywords: settings.seoKeywords ?? null,
         };
 
         if (sanitizedSettings.restaurantGalleryUrls.length < 6) {
@@ -232,6 +242,10 @@ export default function SettingsPage() {
     settingsToSave.restaurantName = values.restaurantName ?? null;
     settingsToSave.restaurantImageUrl = values.restaurantImageUrl ?? null;
     settingsToSave.restaurantGalleryUrls = (values.restaurantGalleryUrls ?? Array(6).fill(null)).map(url => url ?? null);
+    settingsToSave.seoH1 = values.seoH1 ?? null;
+    settingsToSave.seoMetaDescription = values.seoMetaDescription ?? null;
+    settingsToSave.seoKeywords = values.seoKeywords ?? null;
+
 
     try {
       console.log("[settingsPage][onSubmit] Entering try block for uploads and save. Main imageFile:", imageFile ? imageFile.name : 'null');
@@ -422,6 +436,63 @@ export default function SettingsPage() {
                 />
             </CardContent>
           </Card>
+
+          <Card className="shadow-lg rounded-xl form-interaction-animate">
+            <CardHeader>
+                <CardTitle className="font-headline flex items-center">
+                    <Search className="mr-3 h-6 w-6 text-primary" />
+                    SEO Settings
+                </CardTitle>
+                <CardDescription className="font-body">
+                    Optimize how your restaurant appears on search engines like Google.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <FormField
+                    control={form.control}
+                    name="seoH1"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="font-body">Main Heading (H1)</FormLabel>
+                            <FormControl>
+                                <Input {...field} value={field.value ?? ""} placeholder="e.g. The Best Italian Restaurant in Town" className="font-body" />
+                            </FormControl>
+                            <FormDescription>This is the primary headline for your public page. Keep it short and impactful.</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="seoMetaDescription"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="font-body">Meta Description</FormLabel>
+                            <FormControl>
+                                <Textarea {...field} value={field.value ?? ""} placeholder="Describe your restaurant in 1-2 sentences." className="font-body" />
+                            </FormControl>
+                            <FormDescription>A short summary that appears in search results. Aim for ~155 characters.</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="seoKeywords"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="font-body">Keywords</FormLabel>
+                            <FormControl>
+                                <Input {...field} value={field.value ?? ""} placeholder="italian food, pasta, pizza, fine dining" className="font-body" />
+                            </FormControl>
+                            <FormDescription>Comma-separated keywords that describe your restaurant and cuisine.</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </CardContent>
+          </Card>
+
 
           <Card className="shadow-lg rounded-xl form-interaction-animate">
             <CardHeader>

@@ -53,6 +53,9 @@ export interface RestaurantProfileSettings {
   restaurantName?: string | null;
   restaurantImageUrl?: string | null;
   restaurantGalleryUrls?: (string | null)[]; // Array of up to 6 image URLs or nulls
+  seoH1?: string | null;
+  seoMetaDescription?: string | null;
+  seoKeywords?: string | null;
 }
 
 // Combined type for the settings page form
