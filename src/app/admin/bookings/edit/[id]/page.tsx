@@ -134,7 +134,7 @@ export default function EditBookingPage() {
         date: booking.date, // Expected YYYY-MM-DD
         time: booking.time, // Expected HH:MM
         partySize: booking.partySize,
-        notes: booking.notes,
+        notes: booking.notes || '', // Ensure notes is always a string, not undefined
       },
     };
 
