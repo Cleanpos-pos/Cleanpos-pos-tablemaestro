@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Table, Booking, TableStatus } from '@/lib/types';
 import { DndContext, useDraggable, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -90,24 +90,18 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
     });
   }, [allTables, allBookings, selectedDate]);
 
-  const initialPositions = useMemo(() => {
-    const positions: Record<string, { x: number, y: number }> = {};
-    tablesWithCorrectStatus.forEach((table, index) => {
-      positions[table.id] = {
+  const [positions, setPositions] = useState<Record<string, { x: number, y: number }>>({});
+
+  useEffect(() => {
+    const initialPositions: Record<string, { x: number, y: number }> = {};
+    allTables.forEach((table, index) => {
+      initialPositions[table.id] = {
         x: table.x ?? (index % 10) * (40 + GRID_SIZE * 2),
         y: table.y ?? Math.floor(index / 10) * (25 + GRID_SIZE * 2),
       };
     });
-    return positions;
-  }, [tablesWithCorrectStatus]);
-
-  const [positions, setPositions] = useState<Record<string, { x: number, y: number }>>(initialPositions);
-  
-  // This effect ensures that if the underlying tables list changes (e.g., due to filtering),
-  // the positions state is updated to reflect the new set of tables.
-  React.useEffect(() => {
-      setPositions(initialPositions);
-  }, [initialPositions]);
+    setPositions(initialPositions);
+  }, [allTables]);
 
 
   const sensors = useSensors(
@@ -119,17 +113,18 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
     const { active, delta } = event;
     const id = String(active.id);
     
-    const newPosition = {
-      x: Math.round((positions[id].x + delta.x) / GRID_SIZE) * GRID_SIZE,
-      y: Math.round((positions[id].y + delta.y) / GRID_SIZE) * GRID_SIZE,
-    };
-    
-    setPositions(prev => ({
-      ...prev,
-      [id]: newPosition,
-    }));
-    
-    onLayoutChange(id, newPosition.x, newPosition.y);
+    setPositions(prev => {
+        const currentPos = prev[id] || {x: 0, y: 0};
+        const newPosition = {
+          x: Math.round((currentPos.x + delta.x) / GRID_SIZE) * GRID_SIZE,
+          y: Math.round((currentPos.y + delta.y) / GRID_SIZE) * GRID_SIZE,
+        };
+        onLayoutChange(id, newPosition.x, newPosition.y);
+        return {
+          ...prev,
+          [id]: newPosition,
+        };
+    });
   }
 
   const combinedPositions = useMemo(() => {
@@ -154,7 +149,7 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
           return (
             <DraggableTable key={table.id} table={table} initialPosition={pos}>
               <div className={cn(
-                  "w-[80px] h-[50px] rounded-md shadow-md cursor-grab active:cursor-grabbing p-1.5 flex flex-col justify-between transition-colors text-xs",
+                  "w-[40px] h-[25px] rounded-md shadow-md cursor-grab active:cursor-grabbing p-1 flex flex-col justify-between transition-colors text-[8px]",
                   table.status === 'available' && 'bg-green-100 border-green-400',
                   table.status === 'occupied' && 'bg-red-100 border-red-400',
                   table.status === 'reserved' && 'bg-blue-100 border-blue-400',
@@ -162,11 +157,11 @@ export default function FloorPlan({ allTables, allBookings, selectedDate, onLayo
                   (table.status === 'cleaning' || table.status === 'unavailable') && 'bg-gray-200 border-gray-400',
               )}>
                 <div className="flex justify-between items-center font-bold">
-                  <span className="flex items-center gap-1 truncate"><SquareStack className="h-3 w-3 shrink-0"/> <span className="truncate">{table.name}</span></span>
-                  <span className="flex items-center gap-1"><Users className="h-3 w-3 shrink-0"/> {table.capacity}</span>
+                  <span className="flex items-center gap-0.5 truncate"><SquareStack className="h-2 w-2 shrink-0"/> <span className="truncate">{table.name}</span></span>
+                  <span className="flex items-center gap-0.5"><Users className="h-2 w-2 shrink-0"/> {table.capacity}</span>
                 </div>
-                <div className="text-center">
-                  <TableStatusBadge status={table.status} className="px-1.5 py-0 text-[10px]" />
+                <div className="text-center -mt-0.5">
+                  <TableStatusBadge status={table.status} className="px-1 py-0 text-[6px]" />
                 </div>
               </div>
             </DraggableTable>
