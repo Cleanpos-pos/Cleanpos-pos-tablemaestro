@@ -1,11 +1,25 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { getPublicRestaurantSettings } from '@/services/settingsService';
 
-export const metadata: Metadata = {
-  title: 'Table Maestro V2',
-  description: 'Restaurant booking and waitlist optimization system.',
-};
+// This function dynamically generates metadata for the page.
+export async function generateMetadata(): Promise<Metadata> {
+  // Fetch the public settings which include SEO fields.
+  const settings = await getPublicRestaurantSettings();
+
+  const title = settings?.seoH1 || settings?.restaurantName || 'Table Maestro V2';
+  const description = settings?.seoMetaDescription || 'Restaurant booking and waitlist optimization system.';
+  const keywords = settings?.seoKeywords?.split(',').map(k => k.trim()) || [];
+
+  return {
+    title: title,
+    description: description,
+    keywords: keywords,
+  };
+}
+
 
 export default function RootLayout({
   children,
