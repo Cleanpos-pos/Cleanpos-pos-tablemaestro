@@ -16,11 +16,12 @@ export function renderSimpleTemplate(templateString: string, data: Record<string
   let rendered = templateString;
 
   // Handle conditional blocks: {{#if key}}content{{/if}} or {{#if key}}content1{{else}}content2{{/if}}
-  // This regex is simplified and might not cover all edge cases of complex nested structures.
+  // Corrected regex to be more robust by removing the backreference which can be problematic.
   rendered = rendered.replace(
-    /\{\{#if\s+([a-zA-Z0-9_]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\s+\1\}\}/g,
+    /\{\{#if\s+([a-zA-Z0-9_]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\s*\}\}/g,
     (match, key, ifContent, elseContent) => {
-      if (data[key]) {
+      // Check for property existence and "truthiness" (not null, undefined, false, 0, or empty string)
+      if (data[key] && String(data[key]).trim() !== '') {
         return ifContent;
       } else if (elseContent !== undefined) {
         return elseContent;
