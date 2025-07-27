@@ -36,6 +36,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { auth } from "@/config/firebase";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 export default function TableManagementPage() {
   const [tables, setTables] = useState<Table[]>([]);
@@ -197,7 +198,9 @@ export default function TableManagementPage() {
                   mode="single"
                   selected={selectedDate}
                   onSelect={(date) => {
-                    setSelectedDate(date || new Date());
+                    if (date) {
+                      setSelectedDate(date);
+                    }
                     setIsDatePickerOpen(false);
                   }}
                   initialFocus
@@ -254,12 +257,15 @@ export default function TableManagementPage() {
                         </TableCell>
                         <TableCell className="font-body">
                           {reservation ? (
-                            <div className="flex flex-col">
-                                <span className="font-semibold text-primary">{reservation.guestName}</span>
-                                <span className="text-xs text-muted-foreground">{reservation.time} for {reservation.partySize}</span>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">Reserved</Badge>
+                                <div className="flex flex-col">
+                                    <span className="font-semibold text-primary">{reservation.guestName}</span>
+                                    <span className="text-xs text-muted-foreground">{reservation.time} for {reservation.partySize} guests</span>
+                                </div>
                             </div>
                            ) : (
-                            <span className="text-sm text-green-600">Available</span>
+                            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">Available</Badge>
                            )}
                         </TableCell>
                         <TableCell className="text-right">
@@ -314,3 +320,4 @@ export default function TableManagementPage() {
     </div>
   );
 }
+
