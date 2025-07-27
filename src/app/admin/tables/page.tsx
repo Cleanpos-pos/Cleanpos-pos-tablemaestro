@@ -22,7 +22,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -221,7 +220,8 @@ export default function TableManagementPage() {
             return { ...table, status: newStatus };
         }
       }
-      return table; // Return original table if no booking or no matching status
+      // If no booking or mapping, return table with its live status
+      return table; 
     });
   }, [tables, bookings, selectedDate]);
   
@@ -459,7 +459,5 @@ export default function TableManagementPage() {
     </div>
   );
 }
-
-    
 
     
