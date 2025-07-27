@@ -2,10 +2,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table as ShadcnTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Edit3, Trash2, Loader2, MoreHorizontal, AlertTriangle, Users, MapPin, Calendar as CalendarIconLucide } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PlusCircle, Edit3, Trash2, Loader2, MoreHorizontal, AlertTriangle, Users, MapPin, Calendar as CalendarIconLucide, Tag } from "lucide-react";
 import type { Table, Booking } from "@/lib/types";
 import { getTables, deleteTable } from "@/services/tableService";
 import { getBookings } from "@/services/bookingService";
@@ -37,10 +38,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { auth } from "@/config/firebase";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 export default function TableManagementPage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [areas, setAreas] = useState<string[]>(["All"]);
+  const [newArea, setNewArea] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -52,7 +56,7 @@ export default function TableManagementPage() {
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
-     if (!auth.currentUser) {
+    if (!auth.currentUser) {
       console.warn("[TablesPage] Attempted to fetch data without an authenticated user.");
       setIsLoading(false);
       return;
@@ -60,10 +64,13 @@ export default function TableManagementPage() {
     try {
       const [fetchedTables, fetchedBookings] = await Promise.all([
         getTables(),
-        getBookings() // Fetch all bookings
+        getBookings()
       ]);
       setTables(fetchedTables);
       setBookings(fetchedBookings);
+      // Extract unique areas from tables and add "All"
+      const uniqueAreas = ["All", ...Array.from(new Set(fetchedTables.map(t => t.location).filter(Boolean) as string[]))];
+      setAreas(uniqueAreas);
     } catch (error) {
       console.error("Failed to fetch tables or bookings:", error);
       toast({
@@ -84,10 +91,19 @@ export default function TableManagementPage() {
         setIsLoading(false);
         setTables([]);
         setBookings([]);
+        setAreas(["All"]);
       }
     });
     return () => unsubscribe();
   }, [fetchData]);
+
+  const handleAddNewArea = () => {
+    if (newArea && !areas.includes(newArea)) {
+      setAreas([...areas, newArea]);
+      setNewArea("");
+      toast({ title: "Area Added", description: `Area "${newArea}" is now available for table assignment.` });
+    }
+  };
 
   const handleFormSubmit = () => {
     setIsFormOpen(false);
@@ -140,13 +156,12 @@ export default function TableManagementPage() {
     );
   };
 
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline text-foreground">Table Management</h1>
-          <p className="text-muted-foreground font-body mt-1">View table status and reservations for a specific day.</p>
+          <p className="text-muted-foreground font-body mt-1">Define areas, manage tables, and view daily assignments.</p>
         </div>
         <Dialog open={isFormOpen} onOpenChange={(open) => {
           setIsFormOpen(open);
@@ -168,18 +183,47 @@ export default function TableManagementPage() {
                 existingTable={editingTable}
                 onFormSubmit={handleFormSubmit}
                 onCancel={() => { setIsFormOpen(false); setEditingTable(undefined); }}
+                availableAreas={areas.filter(a => a !== "All")}
             />
           </DialogContent>
         </Dialog>
       </div>
-
+      
       <Card className="shadow-lg rounded-xl">
         <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-baseline gap-4">
-            <div>
-                <CardTitle className="font-headline">Table Reservations</CardTitle>
-                <CardDescription className="font-body mt-1">Select a date to view reservations. The "Live Status" reflects the real-time state.</CardDescription>
-            </div>
+          <CardTitle className="font-headline">Table Areas</CardTitle>
+          <CardDescription className="font-body">Define the different areas or sections of your restaurant.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2 items-center">
+            {areas.filter(a => a !== 'All').map(area => (
+              <Badge key={area} variant="secondary" className="text-base py-1 px-3 bg-green-100 text-green-800 border-green-200">{area}</Badge>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-4 max-w-sm">
+            <Input
+              value={newArea}
+              onChange={(e) => setNewArea(e.target.value)}
+              placeholder="e.g., Patio, Bar, Rooftop"
+              className="font-body"
+            />
+            <Button onClick={handleAddNewArea}><PlusCircle className="mr-2 h-4 w-4" /> Add Area</Button>
+          </div>
+        </CardContent>
+         <CardFooter>
+            <p className="text-xs text-muted-foreground font-body">
+              These areas will be available in the 'Location' dropdown when adding or editing a table.
+            </p>
+          </CardFooter>
+      </Card>
+
+      <Tabs defaultValue="All" className="w-full">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+            <TabsList>
+              {areas.map(area => (
+                <TabsTrigger key={area} value={area} className="font-body">{area}</TabsTrigger>
+              ))}
+            </TabsList>
             <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -207,98 +251,96 @@ export default function TableManagementPage() {
                 />
               </PopoverContent>
             </Popover>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="ml-2 font-body">Loading tables and bookings...</p>
-            </div>
-          ) : tables.length === 0 && auth.currentUser ? (
-            <div className="text-center py-10">
-              <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-medium font-body">No Tables Found</h3>
-              <p className="mt-1 text-sm text-muted-foreground font-body">
-                Get started by adding your first table.
-              </p>
-               <Button className="mt-4" onClick={() => {setEditingTable(undefined); setIsFormOpen(true);}}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Table
-                </Button>
-            </div>
-          ) : !auth.currentUser && !isLoading ? (
-             <div className="text-center py-10">
-                <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
-                <h3 className="mt-4 text-lg font-medium font-body">Authentication Required</h3>
-                <p className="mt-1 text-sm text-muted-foreground font-body">
-                    Please log in to manage tables.
-                </p>
-            </div>
-          ) : (
-            <ShadcnTable>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-body">Name</TableHead>
-                  <TableHead className="font-body text-center">Capacity</TableHead>
-                  <TableHead className="font-body text-center">Live Status</TableHead>
-                  <TableHead className="font-body">Reservation for {format(selectedDate, "MMM d")}</TableHead>
-                  <TableHead className="font-body text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tables.map((table) => {
-                  const reservation = getReservationForTable(table.id, selectedDate);
-                  return (
-                      <TableRow key={table.id}>
-                        <TableCell className="font-medium font-body">{table.name}</TableCell>
-                        <TableCell className="text-center font-body">{table.capacity}</TableCell>
-                        <TableCell className="text-center font-body">
-                           <TableStatusBadge status={table.status} />
-                        </TableCell>
-                        <TableCell className="font-body">
-                          {reservation ? (
-                            <div className="flex items-center gap-2">
-                                <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">Reserved</Badge>
-                                <div className="flex flex-col">
-                                    <span className="font-semibold text-primary">{reservation.guestName}</span>
-                                    <span className="text-xs text-muted-foreground">{reservation.time} for {reservation.partySize} guests</span>
-                                </div>
-                            </div>
-                           ) : (
-                            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">Available</Badge>
-                           )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <span className="sr-only">Open menu</span>
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel className="font-body">Actions</DropdownMenuLabel>
-                              <DropdownMenuItem className="font-body cursor-pointer" onClick={() => handleEdit(table)}>
-                                <Edit3 className="mr-2 h-4 w-4" /> Edit Details
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="font-body text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                                onClick={() => openDeleteDialog(table)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete Table
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+        </div>
+        {areas.map(area => (
+          <TabsContent key={area} value={area}>
+            <Card className="shadow-lg rounded-xl">
+              <CardHeader>
+                  <CardTitle className="font-headline">Tables in "{area}"</CardTitle>
+                  <CardDescription className="font-body">Live status and reservations for {format(selectedDate, "MMM d, yyyy")}.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 font-body">Loading tables...</p>
+                  </div>
+                ) : (
+                  <ShadcnTable>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="font-body">Name</TableHead>
+                        <TableHead className="font-body text-center">Capacity</TableHead>
+                        <TableHead className="font-body text-center">Live Status</TableHead>
+                        <TableHead className="font-body">Reservation for {format(selectedDate, "MMM d")}</TableHead>
+                        <TableHead className="font-body text-right">Actions</TableHead>
                       </TableRow>
-                  );
-                })}
-              </TableBody>
-            </ShadcnTable>
-          )}
-        </CardContent>
-      </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {tables.filter(t => area === "All" || t.location === area).map((table) => {
+                        const reservation = getReservationForTable(table.id, selectedDate);
+                        return (
+                            <TableRow key={table.id}>
+                              <TableCell className="font-medium font-body">{table.name}</TableCell>
+                              <TableCell className="text-center font-body">{table.capacity}</TableCell>
+                              <TableCell className="text-center font-body">
+                                <TableStatusBadge status={table.status} />
+                              </TableCell>
+                              <TableCell className="font-body">
+                                {reservation ? (
+                                  <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">Reserved</Badge>
+                                      <div className="flex flex-col">
+                                          <span className="font-semibold text-primary">{reservation.guestName}</span>
+                                          <span className="text-xs text-muted-foreground">{reservation.time} for {reservation.partySize} guests</span>
+                                      </div>
+                                  </div>
+                                ) : (
+                                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">Available</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <span className="sr-only">Open menu</span>
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel className="font-body">Actions</DropdownMenuLabel>
+                                    <DropdownMenuItem className="font-body cursor-pointer" onClick={() => handleEdit(table)}>
+                                      <Edit3 className="mr-2 h-4 w-4" /> Edit Details
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="font-body text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                                      onClick={() => openDeleteDialog(table)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" /> Delete Table
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                        );
+                      })}
+                       {tables.filter(t => area === "All" || t.location === area).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="h-24 text-center font-body">
+                              No tables found in this area.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                    </TableBody>
+                  </ShadcnTable>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ))}
+      </Tabs>
+
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
@@ -320,4 +362,3 @@ export default function TableManagementPage() {
     </div>
   );
 }
-

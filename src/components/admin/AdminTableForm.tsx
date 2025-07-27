@@ -24,6 +24,7 @@ interface AdminTableFormProps {
   existingTable?: Table;
   onFormSubmit: () => void; // Callback to refresh table list or close dialog
   onCancel?: () => void;
+  availableAreas?: string[];
 }
 
 const tableFormSchema = z.object({
@@ -37,7 +38,7 @@ type TableFormValues = z.infer<typeof tableFormSchema>;
 
 const tableStatuses: TableStatus[] = ['available', 'pending', 'reserved', 'occupied', 'cleaning', 'unavailable'];
 
-export default function AdminTableForm({ existingTable, onFormSubmit, onCancel }: AdminTableFormProps) {
+export default function AdminTableForm({ existingTable, onFormSubmit, onCancel, availableAreas = [] }: AdminTableFormProps) {
   const { toast } = useToast();
   const isEditMode = !!existingTable;
 
@@ -149,9 +150,23 @@ export default function AdminTableForm({ existingTable, onFormSubmit, onCancel }
           render={({ field }) => (
             <FormItem>
               <FormLabel className="font-body flex items-center"><MapPin className="mr-2 h-4 w-4 text-muted-foreground" />Location (Optional)</FormLabel>
-              <FormControl>
-                <Input placeholder="e.g. Main Dining, Window, Patio" {...field} className="font-body" />
-              </FormControl>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger className="font-body">
+                      <SelectValue placeholder="Select an area" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="" className="font-body">
+                      (No Area)
+                    </SelectItem>
+                    {availableAreas.map(area => (
+                      <SelectItem key={area} value={area} className="font-body">
+                        {area}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               <FormMessage />
             </FormItem>
           )}
