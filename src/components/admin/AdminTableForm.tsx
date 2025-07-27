@@ -37,6 +37,7 @@ const tableFormSchema = z.object({
 type TableFormValues = z.infer<typeof tableFormSchema>;
 
 const tableStatuses: TableStatus[] = ['available', 'pending', 'reserved', 'occupied', 'cleaning', 'unavailable'];
+const NO_AREA_SENTINEL = "__NO_AREA__";
 
 export default function AdminTableForm({ existingTable, onFormSubmit, onCancel, availableAreas = [] }: AdminTableFormProps) {
   const { toast } = useToast();
@@ -150,14 +151,17 @@ export default function AdminTableForm({ existingTable, onFormSubmit, onCancel, 
           render={({ field }) => (
             <FormItem>
               <FormLabel className="font-body flex items-center"><MapPin className="mr-2 h-4 w-4 text-muted-foreground" />Location (Optional)</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select 
+                onValueChange={(value) => field.onChange(value === NO_AREA_SENTINEL ? '' : value)} 
+                defaultValue={field.value || NO_AREA_SENTINEL}
+              >
                   <FormControl>
                     <SelectTrigger className="font-body">
                       <SelectValue placeholder="Select an area" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="" className="font-body">
+                    <SelectItem value={NO_AREA_SENTINEL} className="font-body text-muted-foreground">
                       (No Area)
                     </SelectItem>
                     {availableAreas.map(area => (
