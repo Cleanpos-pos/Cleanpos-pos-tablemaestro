@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Search, Filter, Edit3, Trash2, MoreHorizontal, PlusCircle, FileDown, Loader2 } from "lucide-react";
 import type { Booking } from "@/lib/types";
-import { format } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 import Link from "next/link";
 import {
   AlertDialog,
@@ -66,8 +66,9 @@ export default function BookingManagementPage() {
         statusFilter.length === 0 || statusFilter.includes(booking.status)
       )
       .sort((a, b) => {
-        const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
-        const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
+        const dateA = a.date && a.time ? parseISO(`${a.date}T${a.time}`) : 0;
+        const dateB = b.date && b.time ? parseISO(`${b.date}T${b.time}`) : 0;
+        if (!dateA || !dateB) return 0;
         return dateA.getTime() - dateB.getTime();
       });
   }, [bookings, searchTerm, statusFilter]);
@@ -130,6 +131,18 @@ export default function BookingManagementPage() {
     completed: "bg-gray-500 hover:bg-gray-600",
     cancelled: "bg-red-500 hover:bg-red-600",
   };
+
+  const formatDate = (dateString: string) => {
+    try {
+        const date = parseISO(dateString + 'T00:00:00');
+        if (isValid(date)) {
+            return format(date, "MMM d, yyyy");
+        }
+    } catch (e) {
+        // fall through
+    }
+    return 'Invalid Date';
+  }
 
   return (
     <div className="space-y-8">
@@ -207,7 +220,7 @@ export default function BookingManagementPage() {
                     <TableRow key={booking.id}>
                       <TableCell className="font-medium font-body">{booking.guestName}</TableCell>
                       <TableCell className="font-body">
-                        {booking.date && booking.time ? `${format(new Date(booking.date + 'T00:00:00'), "MMM d, yyyy")} at ${booking.time}` : 'Date/Time not set'}
+                        {booking.date && booking.time ? `${formatDate(booking.date)} at ${booking.time}` : 'Date/Time not set'}
                       </TableCell>
                       <TableCell className="text-center font-body">{booking.partySize}</TableCell>
                       <TableCell className="text-center font-body">
