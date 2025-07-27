@@ -2,13 +2,15 @@
 "use client";
 
 import React, { useState, useMemo } from 'react';
-import type { Table } from '@/lib/types';
+import type { Table, Booking, TableStatus } from '@/lib/types';
 import { DndContext, useDraggable, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import TableStatusBadge from './TableStatusBadge';
 import { Users, SquareStack } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+
 
 const GRID_SIZE = 10;
 
@@ -42,24 +44,71 @@ function DraggableTable({ table, initialPosition, children }: DraggableTableProp
 }
 
 interface FloorPlanProps {
-  tables: Table[];
+  allTables: Table[];
+  allBookings: Booking[];
+  selectedDate: Date;
   onLayoutChange: (id: string, x: number, y: number) => void;
   updatedLayout: Record<string, { x: number, y: number }>;
 }
 
-export default function FloorPlan({ tables, onLayoutChange, updatedLayout }: FloorPlanProps) {
+export default function FloorPlan({ allTables, allBookings, selectedDate, onLayoutChange, updatedLayout }: FloorPlanProps) {
+  
+  const tablesWithCorrectStatus = useMemo(() => {
+    const formattedDate = format(selectedDate, "yyyy-MM-dd");
+    const dateBookings = allBookings.filter(b => b.date === formattedDate && b.tableId && b.status !== 'cancelled' && b.status !== 'completed');
+    
+    const tableBookingMap = new Map<string, Booking>();
+    // Prioritize seated > confirmed > pending
+    for (const booking of dateBookings) {
+      if (!booking.tableId) continue;
+      const existing = tableBookingMap.get(booking.tableId);
+      if (!existing) {
+        tableBookingMap.set(booking.tableId, booking);
+      } else {
+        const priority = { 'seated': 3, 'confirmed': 2, 'pending': 1, 'completed': 0, 'cancelled': 0 };
+        if ((priority[booking.status] || 0) > (priority[existing.status] || 0)) {
+           tableBookingMap.set(booking.tableId, booking);
+        }
+      }
+    }
+
+    const bookingStatusToTableStatus: Record<string, TableStatus> = {
+      pending: 'pending',
+      confirmed: 'reserved',
+      seated: 'occupied'
+    };
+    
+    return allTables.map(table => {
+      const booking = tableBookingMap.get(table.id);
+      if (booking) {
+        const newStatus = bookingStatusToTableStatus[booking.status];
+        if (newStatus) {
+            return { ...table, status: newStatus };
+        }
+      }
+      return table; 
+    });
+  }, [allTables, allBookings, selectedDate]);
+
   const initialPositions = useMemo(() => {
     const positions: Record<string, { x: number, y: number }> = {};
-    tables.forEach((table, index) => {
+    tablesWithCorrectStatus.forEach((table, index) => {
       positions[table.id] = {
-        x: table.x ?? (index % 10) * (50 + GRID_SIZE * 2), // Default positioning if not set
-        y: table.y ?? Math.floor(index / 10) * (40 + GRID_SIZE * 2),
+        x: table.x ?? (index % 10) * (40 + GRID_SIZE * 2),
+        y: table.y ?? Math.floor(index / 10) * (25 + GRID_SIZE * 2),
       };
     });
     return positions;
-  }, [tables]);
+  }, [tablesWithCorrectStatus]);
 
   const [positions, setPositions] = useState<Record<string, { x: number, y: number }>>(initialPositions);
+  
+  // This effect ensures that if the underlying tables list changes (e.g., due to filtering),
+  // the positions state is updated to reflect the new set of tables.
+  React.useEffect(() => {
+      setPositions(initialPositions);
+  }, [initialPositions]);
+
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -86,7 +135,7 @@ export default function FloorPlan({ tables, onLayoutChange, updatedLayout }: Flo
   const combinedPositions = useMemo(() => {
     const result = {...positions};
     for (const id in updatedLayout) {
-        if(result[id]) { // only if table is in current view
+        if(result[id]) {
             result[id] = updatedLayout[id];
         }
     }
@@ -100,7 +149,7 @@ export default function FloorPlan({ tables, onLayoutChange, updatedLayout }: Flo
       modifiers={[restrictToWindowEdges]}
     >
       <div className="relative w-full min-h-[600px] bg-muted/30 rounded-lg border-2 border-dashed border-gray-300 p-4">
-        {tables.map(table => {
+        {tablesWithCorrectStatus.map(table => {
           const pos = combinedPositions[table.id] || {x: 0, y: 0};
           return (
             <DraggableTable key={table.id} table={table} initialPosition={pos}>
