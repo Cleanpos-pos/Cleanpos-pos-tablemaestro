@@ -67,11 +67,13 @@ export default function SignupForm({ selectedPlan }: SignupFormProps) {
 
       toast({
         title: "Account Created!",
-        description: "Your account has been successfully created. You will be redirected to the dashboard.",
+        description: "Your account has been successfully created. You will be redirected to payment.",
       });
-      // In a real application, this is where you would redirect to Stripe Checkout
+      // In a real application, this is where you would redirect to Stripe Checkout.
       // After successful payment, a webhook would update the user's role in Firestore.
-      // For now, we'll redirect to the admin dashboard.
+      // For now, we'll simulate this by redirecting to the dashboard.
+      // TODO: Replace with a call to a server action that creates a Stripe checkout session.
+      console.log("TODO: Redirect to Stripe Checkout for plan:", selectedPlan || 'starter');
       router.push("/admin/dashboard");
     } catch (error: any) {
       let errorMessage = "Sign up failed. Please try again.";
