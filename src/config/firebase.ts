@@ -41,7 +41,11 @@ if (!getApps().some(app => app.name === 'primary')) {
 // Initialize Secondary (POS) Firebase App if config is provided
 let posApp: FirebaseApp | null = null;
 let posDb: any = null;
-if (posFirebaseConfig.apiKey && posFirebaseConfig.projectId) {
+
+const requiredPosKeys: (keyof typeof posFirebaseConfig)[] = ['apiKey', 'projectId', 'authDomain'];
+const missingKeys = requiredPosKeys.filter(key => !posFirebaseConfig[key]);
+
+if (missingKeys.length === 0) {
     if (!getApps().some(app => app.name === 'pos')) {
         try {
             posApp = initializeApp(posFirebaseConfig, 'pos');
@@ -57,7 +61,7 @@ if (posFirebaseConfig.apiKey && posFirebaseConfig.projectId) {
         console.log('[FirebaseConfig] Secondary (POS) Firebase app already initialized.');
     }
 } else {
-    console.warn('[FirebaseConfig] Secondary (POS) Firebase config not found. Table integration will be disabled.');
+    console.warn(`[FirebaseConfig] Secondary (POS) Firebase config not found or is incomplete. Table integration will be disabled. Missing required keys in .env: ${missingKeys.map(k => `NEXT_PUBLIC_POS_FIREBASE_${k.replace('Firebase','_FIREBASE_').toUpperCase()}`).join(', ')}`);
 }
 
 
