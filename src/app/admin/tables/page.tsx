@@ -72,10 +72,15 @@ export default function TableManagementPage() {
       setAreas(uniqueAreas);
     } catch (error) {
       console.error("Failed to fetch tables or bookings:", error);
+      let errorMessage = `Could not retrieve data: ${error instanceof Error ? error.message : String(error)}.`;
+       if (error instanceof Error && error.message.includes("Firestore Security Rules")) {
+        errorMessage = `Could not retrieve tables from the POS database due to a permissions issue. Please ensure your POS project's Firestore rules allow reads from this application. Full Error: ${error.message}`;
+      }
       toast({
         title: "Error Loading Data",
-        description: `Could not retrieve tables or bookings: ${error instanceof Error ? error.message : String(error)}.`,
+        description: errorMessage,
         variant: "destructive",
+        duration: 10000,
       });
     } finally {
       setIsLoading(false);

@@ -21,14 +21,12 @@ import {
 import { getRestaurantSettings } from './settingsService';
 
 const POS_ROOT_COLLECTION = 'stores'; 
-const POS_SUB_COLLECTION = 'tables'; 
-const FALLBACK_TABLES_COLLECTION = 'tables'; 
+const POS_TABLES_COLLECTION = 'tables'; 
+const FALLBACK_TABLES_COLLECTION = 'tables';
 
-// This function now correctly maps the POS table document to the app's Table type.
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
   
-  // Convert POS status (e.g., "Available") to internal status (e.g., "available")
   let internalStatus: TableStatus = 'available';
   if (data.status && typeof data.status === 'string') {
     switch (data.status.toLowerCase()) {
@@ -41,7 +39,8 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
       case 'reserved':
         internalStatus = 'reserved';
         break;
-      case 'needscleaning':
+      case 'needscleaning': // From POS
+      case 'cleaning': // From this app
         internalStatus = 'cleaning';
         break;
       default:
@@ -52,88 +51,111 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   return {
     id: docSnap.id,
     name: data.name || `Unnamed Table ${docSnap.id}`,
-    capacity: data.capacity || 1, // Default to 1 if capacity is missing
+    capacity: data.capacity || 1,
     status: internalStatus,
-    location: data.areaId || '', // Map 'areaId' from POS to 'location' in our app
+    location: data.areaId || data.location || '',
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
 };
 
+// --- Internal Functions for clarity ---
 
-// This function robustly determines the correct collection reference.
-const getTablesCollectionRef = async () => {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error("User not authenticated to access tables.");
-  }
-  
-  if (posDb) {
-      console.log("[tableService] POS Firestore database is available. Checking settings for a POS Store ID...");
-      const settings = await getRestaurantSettings();
-      const posStoreId = settings.posStoreId;
-
-      if (posStoreId && posStoreId.trim() !== "") {
-        const path = `${POS_ROOT_COLLECTION}/${posStoreId}/${POS_SUB_COLLECTION}`;
-        console.log(`[tableService] SUCCESS: POS Store ID "${posStoreId}" found. Using POS path: "${path}"`);
-        return collection(posDb as Firestore, path);
-      } else {
-        console.log(`[tableService] INFO: POS DB is connected, but no POS Store ID is configured in settings. Falling back to the main app's database.`);
-      }
-  } else {
-     console.log("[tableService] INFO: POS database not connected. Using main app's Firestore for tables.");
-  }
-  
-  const fallbackPath = `restaurantConfig/${user.uid}/${FALLBACK_TABLES_COLLECTION}`;
-  console.log(`[tableService] Using fallback path in primary database: "${fallbackPath}"`);
-  return collection(db, fallbackPath);
+const getPosTables = async (storeId: string): Promise<Table[]> => {
+    if (!posDb) {
+        throw new Error("Configuration Error: A POS Store ID is set, but the connection to the POS database (posDb) is not available. Please check your .env file and Firebase configuration.");
+    }
+    const path = `${POS_ROOT_COLLECTION}/${storeId}/${POS_TABLES_COLLECTION}`;
+    console.log(`[tableService] getPosTables: Attempting to query POS path: "${path}"`);
+    try {
+        const tablesCollectionRef = collection(posDb as Firestore, path);
+        const q = query(tablesCollectionRef, orderBy('name', 'asc'));
+        const querySnapshot = await getDocs(q);
+        console.log(`[tableService] getPosTables: Fetched ${querySnapshot.docs.length} tables from POS database.`);
+        return querySnapshot.docs.map(mapDocToTable);
+    } catch (error) {
+        console.error(`[tableService] getPosTables: Error querying POS path "${path}":`, error);
+        throw new Error(`Failed to fetch tables from the POS database at path '${path}'. This is likely a Firestore Security Rules issue on your POS project. Ensure the path is correct and readable. Original error: ${error instanceof Error ? error.message : String(error)}`);
+    }
 };
 
+const getLocalTables = async (userId: string): Promise<Table[]> => {
+    const path = `restaurantConfig/${userId}/${FALLBACK_TABLES_COLLECTION}`;
+    console.log(`[tableService] getLocalTables: Using fallback path in primary database: "${path}"`);
+    try {
+        const tablesCollectionRef = collection(db, path);
+        const q = query(tablesCollectionRef, orderBy('name', 'asc'));
+        const querySnapshot = await getDocs(q);
+        console.log(`[tableService] getLocalTables: Fetched ${querySnapshot.docs.length} tables from local database.`);
+        return querySnapshot.docs.map(mapDocToTable);
+    } catch (error) {
+        console.error(`[tableService] getLocalTables: Error querying local path "${path}":`, error);
+        throw error;
+    }
+};
+
+
+// --- Public API ---
 
 export const getTables = async (): Promise<Table[]> => {
-  try {
-    const tablesCollectionRef = await getTablesCollectionRef();
-    const q = query(tablesCollectionRef, orderBy('name', 'asc'));
-    const querySnapshot = await getDocs(q);
-    console.log(`[tableService] Fetched ${querySnapshot.docs.length} documents from the collection at path: "${tablesCollectionRef.path}".`);
-    return querySnapshot.docs.map(mapDocToTable);
-  } catch (error) {
-    console.error(`[tableService] Error during getTables execution:`, error);
-    const settings = await getRestaurantSettings();
-    if (posDb && settings.posStoreId) {
-        throw new Error(`Failed to fetch tables from the connected POS database. Check Firestore rules and collection path. Original error: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    throw error;
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn("[tableService] getTables called without an authenticated user. Returning empty array.");
+    return [];
+  }
+  
+  const settings = await getRestaurantSettings();
+  const posStoreId = settings?.posStoreId;
+
+  if (posStoreId && posStoreId.trim() !== "") {
+    console.log(`[tableService] getTables: POS Store ID "${posStoreId}" is configured. Fetching from POS database.`);
+    return getPosTables(posStoreId);
+  } else {
+    console.log("[tableService] getTables: No POS Store ID configured. Fetching from local database.");
+    return getLocalTables(user.uid);
   }
 };
 
-export const addTable = async (tableData: TableInput): Promise<string> => {
-  try {
-    const tablesCollectionRef = await getTablesCollectionRef();
-    const user = auth.currentUser; 
-    if (!user) throw new Error("User not authenticated.");
 
-    const isUsingPosDb = tablesCollectionRef.firestore === posDb;
-    
-    const dataToSave: { [key: string]: any } = { 
-      name: tableData.name,
-      capacity: tableData.capacity,
-      status: tableData.status,
-    };
-    
-    if (isUsingPosDb) {
-        // POS uses 'areaId' and expects statuses like 'Available'
-        dataToSave.areaId = tableData.location || null;
-        switch(tableData.status) {
-            case 'available': dataToSave.status = 'Available'; break;
-            case 'occupied': dataToSave.status = 'Occupied'; break;
-            case 'reserved': dataToSave.status = 'Reserved'; break;
-            case 'cleaning': dataToSave.status = 'NeedsCleaning'; break;
-            default: dataToSave.status = 'Unavailable';
+const getTablesCollectionRef = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error("User not authenticated to access tables.");
+    }
+
+    const settings = await getRestaurantSettings();
+    const posStoreId = settings.posStoreId;
+
+    if (posStoreId && posStoreId.trim() !== "") {
+        if (!posDb) {
+            throw new Error("Configuration Error: A POS Store ID is set, but the POS database is not connected.");
         }
+        const path = `${POS_ROOT_COLLECTION}/${posStoreId}/${POS_TABLES_COLLECTION}`;
+        return collection(posDb as Firestore, path);
     } else {
-        dataToSave.location = tableData.location || null;
-        dataToSave.ownerUID = user.uid;
+        const fallbackPath = `restaurantConfig/${user.uid}/${FALLBACK_TABLES_COLLECTION}`;
+        return collection(db, fallbackPath);
+    }
+};
+
+
+export const addTable = async (tableData: TableInput): Promise<string> => {
+    const tablesCollectionRef = await getTablesCollectionRef();
+    const isUsingPosDb = tablesCollectionRef.firestore === posDb;
+    const dataToSave: { [key: string]: any } = { ...tableData };
+
+    if(isUsingPosDb) {
+        dataToSave.areaId = dataToSave.location;
+        delete dataToSave.location;
+        if (dataToSave.status) {
+             switch(dataToSave.status) {
+                case 'available': dataToSave.status = 'Available'; break;
+                case 'occupied': dataToSave.status = 'Occupied'; break;
+                case 'reserved': dataToSave.status = 'Reserved'; break;
+                case 'cleaning': dataToSave.status = 'NeedsCleaning'; break;
+                default: dataToSave.status = 'Unavailable';
+            }
+        }
     }
 
     const docRef = await addDoc(tablesCollectionRef, {
@@ -142,17 +164,12 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
       updatedAt: serverTimestamp(),
     });
     return docRef.id;
-  } catch (error) {
-    console.error("Error adding table: ", error);
-    throw error;
-  }
 };
 
+
 export const updateTable = async (tableId: string, tableData: TableUpdateData): Promise<void> => {
-  try {
     const tablesCollectionRef = await getTablesCollectionRef();
     const tableRef = doc(tablesCollectionRef, tableId);
-    
     const isUsingPosDb = tablesCollectionRef.firestore === posDb;
     const dataToUpdate: { [key: string]: any } = { ...tableData };
     
@@ -176,22 +193,15 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
       ...dataToUpdate, 
       updatedAt: serverTimestamp(),
     });
-  } catch (error) {
-    console.error("Error updating table: ", error);
-    throw error;
-  }
 };
 
+
 export const deleteTable = async (tableId: string): Promise<void> => {
-  try {
     const tablesCollectionRef = await getTablesCollectionRef();
     const tableRef = doc(tablesCollectionRef, tableId);
     await deleteDoc(tableRef);
-  } catch (error) {
-    console.error("Error deleting table: ", error);
-    throw error;
-  }
 };
+
 
 export const getAvailableTablesCount = async (): Promise<number> => {
   try {
