@@ -26,8 +26,9 @@ const FALLBACK_TABLES_COLLECTION = 'tables';
 
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
+  console.log(`[tableService] Mapping doc ${docSnap.id}, data:`, data);
   
-  let internalStatus: TableStatus = 'available';
+  let internalStatus: TableStatus = 'unavailable';
   if (data.status && typeof data.status === 'string') {
     switch (data.status.toLowerCase()) {
       case 'available':
@@ -39,10 +40,13 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
       case 'reserved':
         internalStatus = 'reserved';
         break;
-      case 'needscleaning': // From POS
-      case 'cleaning': // From this app
+      case 'needscleaning':
+      case 'cleaning':
         internalStatus = 'cleaning';
         break;
+      case 'pending':
+         internalStatus = 'pending';
+         break;
       default:
         internalStatus = 'unavailable';
     }
@@ -51,13 +55,14 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   return {
     id: docSnap.id,
     name: data.name || `Unnamed Table ${docSnap.id}`,
-    capacity: data.capacity || 1,
+    capacity: data.capacity || 1, // Default capacity to 1 if not present
     status: internalStatus,
-    location: data.areaId || data.location || '',
+    location: data.areaId || '', // Map areaId to location
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
 };
+
 
 // --- Internal Functions for clarity ---
 
@@ -126,14 +131,13 @@ const getTablesCollectionRef = async () => {
     const settings = await getRestaurantSettings();
     const posStoreId = settings.posStoreId;
 
-    if (posStoreId && posStoreId.trim() !== "") {
-        if (!posDb) {
-            throw new Error("Configuration Error: A POS Store ID is set, but the POS database is not connected.");
-        }
+    if (posStoreId && posStoreId.trim() !== "" && posDb) {
         const path = `${POS_ROOT_COLLECTION}/${posStoreId}/${POS_TABLES_COLLECTION}`;
+        console.log(`[tableService][getTablesCollectionRef] Using POS DB path: ${path}`);
         return collection(posDb as Firestore, path);
     } else {
         const fallbackPath = `restaurantConfig/${user.uid}/${FALLBACK_TABLES_COLLECTION}`;
+        console.log(`[tableService][getTablesCollectionRef] Using local DB path: ${fallbackPath}`);
         return collection(db, fallbackPath);
     }
 };
