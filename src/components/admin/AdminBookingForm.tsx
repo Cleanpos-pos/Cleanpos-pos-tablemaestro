@@ -127,11 +127,18 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
       return;
     }
 
-    const bookingDataForFirestore: Omit<BookingInput, 'communicationHistory'> = {
-      ...values,
-      date: format(values.date, "yyyy-MM-dd"),
-      tableId: values.tableId || undefined, 
+    const bookingDataForFirestore: Omit<BookingInput, 'communicationHistory'> & { [key: string]: any } = {
+        ...values,
+        date: format(values.date, "yyyy-MM-dd"),
     };
+
+    // Ensure tableId is either a valid string or null, never undefined.
+    // Firestore does not support 'undefined'.
+    if (values.tableId && values.tableId.trim() !== "") {
+        bookingDataForFirestore.tableId = values.tableId;
+    } else {
+        bookingDataForFirestore.tableId = null; // Use null for unassigned tables.
+    }
 
     const oldTableId = existingBooking?.tableId;
     const oldStatus = existingBooking?.status;
