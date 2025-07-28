@@ -1,5 +1,5 @@
 
-import { db, auth } from '@/config/firebase';
+import { db, auth, posDb } from '@/config/firebase';
 import type { Table, TableInput, TableUpdateData, TableStatus } from '@/lib/types';
 import {
   collection,
@@ -15,7 +15,8 @@ import {
   DocumentData,
   QueryDocumentSnapshot,
   where,
-  writeBatch
+  writeBatch,
+  Firestore,
 } from 'firebase/firestore';
 
 const TABLES_COLLECTION = 'tables';
@@ -33,11 +34,23 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   } as Table;
 };
 
+// This function now determines which database to use.
+// It prioritizes the POS database if it's connected, otherwise falls back to the main app's DB.
 const getTablesCollectionRef = () => {
   const user = auth.currentUser;
   if (!user) {
     throw new Error("User not authenticated to access tables.");
   }
+  
+  if (posDb) {
+    console.log("[tableService] Using POS Firestore database for tables.");
+    // NOTE: This assumes tables in the POS system are in a top-level 'tables' collection.
+    // If they are nested under a restaurant ID, this path will need to be adjusted.
+    // e.g., collection(posDb, `restaurants/SOME_RESTAURANT_ID/tables`)
+    return collection(posDb as Firestore, TABLES_COLLECTION);
+  }
+  
+  console.log("[tableService] POS database not connected. Falling back to main app's Firestore for tables.");
   return collection(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`);
 };
 
@@ -50,6 +63,10 @@ export const getTables = async (): Promise<Table[]> => {
     return querySnapshot.docs.map(mapDocToTable);
   } catch (error) {
     console.error("Error fetching tables: ", error);
+    // Add a more descriptive error if POS DB fails
+    if (posDb) {
+        throw new Error(`Failed to fetch tables from the connected POS database. Check Firestore rules and collection path. Original error: ${error instanceof Error ? error.message : String(error)}`);
+    }
     throw error;
   }
 };
@@ -61,16 +78,17 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
     if (!user) throw new Error("User not authenticated.");
 
     const dataToSave: { [key: string]: any } = { ...tableData };
-    // Remove undefined fields, Firestore doesn't support them.
     Object.keys(dataToSave).forEach(key => {
       if (dataToSave[key] === undefined) {
         delete dataToSave[key];
       }
     });
 
+    // If using the main DB, add ownership info. If using POS DB, you might not need this.
+    const finalData = posDb ? dataToSave : { ...dataToSave, ownerUID: user.uid };
+
     const docRef = await addDoc(tablesCollectionRef, {
-      ...dataToSave,
-      ownerUID: user.uid, 
+      ...finalData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -83,12 +101,10 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
 
 export const updateTable = async (tableId: string, tableData: TableUpdateData): Promise<void> => {
   try {
-    const user = auth.currentUser;
-    if (!user) throw new Error("User not authenticated.");
-    const tableRef = doc(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`, tableId);
+    const tablesCollectionRef = getTablesCollectionRef();
+    const tableRef = doc(tablesCollectionRef, tableId);
     
     const dataToUpdate: { [key: string]: any } = { ...tableData };
-    // Remove undefined fields for update as well
     Object.keys(dataToUpdate).forEach(key => {
       if (dataToUpdate[key] === undefined) {
         delete dataToUpdate[key];
@@ -107,20 +123,10 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
 
 export const deleteTable = async (tableId: string): Promise<void> => {
   try {
-    const user = auth.currentUser;
-    if (!user) throw new Error("User not authenticated.");
-    
-    const bookingsCollectionPath = `restaurantConfig/${user.uid}/bookings`; // Assuming bookings are per-user
-    const bookingsRef = collection(db, bookingsCollectionPath);
-    const q = query(bookingsRef, where("tableId", "==", tableId), where("status", "in", ["pending", "confirmed", "seated"]));
-    const activeBookingsSnap = await getDocs(q);
-
-    if (!activeBookingsSnap.empty) {
-        const bookingIds = activeBookingsSnap.docs.map(d => d.id).join(", ");
-        throw new Error(`Table cannot be deleted. It is assigned to active booking(s): ${bookingIds}. Please reassign or cancel these bookings first.`);
-    }
-
-    const tableRef = doc(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`, tableId);
+    // Note: This delete operation now targets the connected POS database if available.
+    // Ensure you have adequate backups and understand the implications.
+    const tablesCollectionRef = getTablesCollectionRef();
+    const tableRef = doc(tablesCollectionRef, tableId);
     await deleteDoc(tableRef);
   } catch (error) {
     console.error("Error deleting table: ", error);
@@ -151,12 +157,11 @@ export const getOccupancyRate = async (): Promise<number> => {
 };
 
 export const batchUpdateTableStatuses = async (tableIds: string[], status: TableStatus): Promise<void> => {
-  const user = auth.currentUser;
-  if (!user) throw new Error("User not authenticated.");
-  
-  const batch = writeBatch(db);
+  const tablesCollectionRef = getTablesCollectionRef();
+  const batch = writeBatch(posDb || db); // Use the correct db instance
+
   tableIds.forEach(tableId => {
-    const tableRef = doc(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`, tableId);
+    const tableRef = doc(tablesCollectionRef, tableId);
     batch.update(tableRef, { status: status, updatedAt: serverTimestamp() });
   });
   await batch.commit();
