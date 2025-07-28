@@ -22,19 +22,41 @@ import {
 import { getRestaurantSettings } from './settingsService';
 
 const POS_ROOT_COLLECTION = 'stores'; 
-const POS_SUB_COLLECTION = 'areas'; 
+const POS_SUB_COLLECTION = 'tables'; 
 const FALLBACK_TABLES_COLLECTION = 'tables'; 
 
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
-  console.log(`[tableService][mapDocToTable] Processing document ID: ${docSnap.id}. Raw data:`, JSON.stringify(data));
+  console.log(`[tableService][mapDocToTable] Processing document ID: ${docSnap.id}. Raw data from POS DB:`, JSON.stringify(data));
   
+  // Convert POS status (e.g., "Available") to internal status (e.g., "available")
+  const posStatus = data.status || 'available';
+  let internalStatus: TableStatus = 'available';
+  switch (posStatus.toLowerCase()) {
+    case 'available':
+      internalStatus = 'available';
+      break;
+    case 'occupied':
+      internalStatus = 'occupied';
+      break;
+    case 'reserved':
+      internalStatus = 'reserved';
+      break;
+    case 'needscleaning':
+      internalStatus = 'cleaning';
+      break;
+    default:
+      // Fallback for any other statuses from POS we don't handle explicitly yet
+      internalStatus = 'unavailable';
+  }
+
+
   return {
     id: docSnap.id,
-    name: data.name || `Unnamed Table ${docSnap.id}`, // Fallback if 'name' is missing
-    capacity: data.capacity || 1, // Default to 1 if 'capacity' is missing
-    status: data.status || 'available', // Default to 'available' if 'status' is missing
-    location: data.location || '', // Use location field if it exists, otherwise empty
+    name: data.name || `Unnamed Table ${docSnap.id}`,
+    capacity: data.capacity || 1, 
+    status: internalStatus,
+    location: data.areaId || '', // Map 'areaId' from POS to 'location' in our app
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
@@ -92,7 +114,12 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
     const user = auth.currentUser; 
     if (!user) throw new Error("User not authenticated.");
 
-    const dataToSave: { [key: string]: any } = { ...tableData };
+    const dataToSave: { [key: string]: any } = { 
+      name: tableData.name,
+      capacity: tableData.capacity,
+      status: tableData.status,
+      areaId: tableData.location || undefined, // map our location back to areaId for POS
+    };
     Object.keys(dataToSave).forEach(key => {
       if (dataToSave[key] === undefined) {
         delete dataToSave[key];
@@ -102,6 +129,8 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
     const finalData = { ...dataToSave };
     if (!posDb) {
         finalData.ownerUID = user.uid;
+        delete finalData.areaId; // Don't save areaId to fallback DB
+        finalData.location = tableData.location; // Save location to fallback DB
     }
 
     const docRef = await addDoc(tablesCollectionRef, {
@@ -122,6 +151,14 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
     const tableRef = doc(tablesCollectionRef, tableId);
     
     const dataToUpdate: { [key: string]: any } = { ...tableData };
+    
+    if (posDb) {
+      if ('location' in dataToUpdate) {
+        dataToUpdate.areaId = dataToUpdate.location;
+        delete dataToUpdate.location;
+      }
+    }
+
     Object.keys(dataToUpdate).forEach(key => {
       if (dataToUpdate[key] === undefined) {
         delete dataToUpdate[key];
@@ -181,3 +218,4 @@ export const batchUpdateTableStatuses = async (tableIds: string[], status: Table
   });
   await batch.commit();
 };
+

@@ -115,3 +115,4 @@ export interface ForumPost {
 }
 
 export type ForumPostInput = Omit<ForumPost, 'id' | 'createdAt' | 'ownerUID' | 'status' | 'ownerEmail'>;
+

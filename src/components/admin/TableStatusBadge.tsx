@@ -21,7 +21,7 @@ const statusColors: Record<TableStatus, string> = {
 const TableStatusBadge: FC<TableStatusBadgeProps> = ({ status, className }) => {
   return (
     <Badge className={cn(statusColors[status], 'text-white capitalize', className)}>
-      {status}
+      {status === 'cleaning' ? 'Needs Cleaning' : status}
     </Badge>
   );
 };

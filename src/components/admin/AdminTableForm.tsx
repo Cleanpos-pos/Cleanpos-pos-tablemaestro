@@ -36,7 +36,14 @@ const tableFormSchema = z.object({
 
 type TableFormValues = z.infer<typeof tableFormSchema>;
 
-const tableStatuses: TableStatus[] = ['available', 'pending', 'reserved', 'occupied', 'cleaning', 'unavailable'];
+const tableStatuses: {value: TableStatus, label: string}[] = [
+  { value: 'available', label: 'Available' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'reserved', label: 'Reserved' },
+  { value: 'occupied', label: 'Occupied' },
+  { value: 'cleaning', label: 'Needs Cleaning' },
+  { value: 'unavailable', label: 'Unavailable' },
+];
 const NO_AREA_SENTINEL = "__NO_AREA__";
 
 export default function AdminTableForm({ existingTable, onFormSubmit, onCancel, availableAreas = [] }: AdminTableFormProps) {
@@ -134,8 +141,8 @@ export default function AdminTableForm({ existingTable, onFormSubmit, onCancel, 
                   </FormControl>
                   <SelectContent>
                     {tableStatuses.map(status => (
-                      <SelectItem key={status} value={status} className="font-body capitalize">
-                        {status}
+                      <SelectItem key={status.value} value={status.value} className="font-body capitalize">
+                        {status.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
