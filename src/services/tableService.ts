@@ -1,4 +1,5 @@
 
+
 import { db, auth, posDb } from '@/config/firebase';
 import type { Table, TableInput, TableUpdateData, TableStatus } from '@/lib/types';
 import {
@@ -18,8 +19,10 @@ import {
   writeBatch,
   Firestore,
 } from 'firebase/firestore';
+import { getRestaurantSettings } from './settingsService';
 
 const TABLES_COLLECTION = 'tables';
+const RESTAURANTS_COLLECTION_POS = 'restaurants'; // Collection name in the POS database
 
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
@@ -28,26 +31,34 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
     name: data.name,
     capacity: data.capacity,
     status: data.status,
-    location: data.location, // Firestore returns null or the value, not undefined for missing fields
+    location: data.location,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
 };
 
-// This function now determines which database to use.
-// It prioritizes the POS database if it's connected, otherwise falls back to the main app's DB.
-const getTablesCollectionRef = () => {
+
+const getTablesCollectionRef = async () => {
   const user = auth.currentUser;
   if (!user) {
     throw new Error("User not authenticated to access tables.");
   }
-  
+
   if (posDb) {
-    console.log("[tableService] Using POS Firestore database for tables.");
-    // NOTE: This assumes tables in the POS system are in a top-level 'tables' collection.
-    // If they are nested under a restaurant ID, this path will need to be adjusted.
-    // e.g., collection(posDb, `restaurants/SOME_RESTAURANT_ID/tables`)
-    return collection(posDb as Firestore, TABLES_COLLECTION);
+    console.log("[tableService] POS Firestore database is connected.");
+    const settings = await getRestaurantSettings();
+    const posUserId = settings.posUserId;
+
+    if (posUserId) {
+      // Path for multi-tenant POS system: /restaurants/{posUserId}/tables
+      const path = `${RESTAURANTS_COLLECTION_POS}/${posUserId}/${TABLES_COLLECTION}`;
+      console.log(`[tableService] Using multi-tenant POS path: ${path}`);
+      return collection(posDb as Firestore, path);
+    } else {
+      console.warn("[tableService] POS DB is connected, but no POS User ID is set in settings. Falling back to simple 'tables' collection in POS DB.");
+      // Fallback for single-tenant POS or if linking is not set up
+      return collection(posDb as Firestore, TABLES_COLLECTION);
+    }
   }
   
   console.log("[tableService] POS database not connected. Falling back to main app's Firestore for tables.");
@@ -57,13 +68,12 @@ const getTablesCollectionRef = () => {
 
 export const getTables = async (): Promise<Table[]> => {
   try {
-    const tablesCollectionRef = getTablesCollectionRef();
+    const tablesCollectionRef = await getTablesCollectionRef();
     const q = query(tablesCollectionRef, orderBy('name', 'asc'));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(mapDocToTable);
   } catch (error) {
     console.error("Error fetching tables: ", error);
-    // Add a more descriptive error if POS DB fails
     if (posDb) {
         throw new Error(`Failed to fetch tables from the connected POS database. Check Firestore rules and collection path. Original error: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -73,7 +83,7 @@ export const getTables = async (): Promise<Table[]> => {
 
 export const addTable = async (tableData: TableInput): Promise<string> => {
   try {
-    const tablesCollectionRef = getTablesCollectionRef();
+    const tablesCollectionRef = await getTablesCollectionRef();
     const user = auth.currentUser; 
     if (!user) throw new Error("User not authenticated.");
 
@@ -84,8 +94,11 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
       }
     });
 
-    // If using the main DB, add ownership info. If using POS DB, you might not need this.
-    const finalData = posDb ? dataToSave : { ...dataToSave, ownerUID: user.uid };
+    const finalData = { ...dataToSave };
+    // We don't add ownerUID when writing to a shared POS database
+    if (!posDb) {
+        finalData.ownerUID = user.uid;
+    }
 
     const docRef = await addDoc(tablesCollectionRef, {
       ...finalData,
@@ -101,7 +114,7 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
 
 export const updateTable = async (tableId: string, tableData: TableUpdateData): Promise<void> => {
   try {
-    const tablesCollectionRef = getTablesCollectionRef();
+    const tablesCollectionRef = await getTablesCollectionRef();
     const tableRef = doc(tablesCollectionRef, tableId);
     
     const dataToUpdate: { [key: string]: any } = { ...tableData };
@@ -123,9 +136,7 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
 
 export const deleteTable = async (tableId: string): Promise<void> => {
   try {
-    // Note: This delete operation now targets the connected POS database if available.
-    // Ensure you have adequate backups and understand the implications.
-    const tablesCollectionRef = getTablesCollectionRef();
+    const tablesCollectionRef = await getTablesCollectionRef();
     const tableRef = doc(tablesCollectionRef, tableId);
     await deleteDoc(tableRef);
   } catch (error) {
@@ -157,8 +168,8 @@ export const getOccupancyRate = async (): Promise<number> => {
 };
 
 export const batchUpdateTableStatuses = async (tableIds: string[], status: TableStatus): Promise<void> => {
-  const tablesCollectionRef = getTablesCollectionRef();
-  const batch = writeBatch(posDb || db); // Use the correct db instance
+  const tablesCollectionRef = await getTablesCollectionRef();
+  const batch = writeBatch(posDb || db); 
 
   tableIds.forEach(tableId => {
     const tableRef = doc(tablesCollectionRef, tableId);

@@ -1,38 +1,52 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Customers and their payment-related info
+
+    // =================================================================
+    // Stripe Payments Extension Rules
+    // =================================================================
+    // Allow logged-in users to create checkout sessions and read their own subscription data.
     match /customers/{uid}/{document=**} {
-      allow read, write: if request.auth.uid != null && request.auth.uid == uid;
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Public-readable products and prices synced from Stripe
-    match /subscription/{id}/{document=**} {
-      allow read: if true;
-    }
+    // =================================================================
+    // Application-Specific Rules
+    // =================================================================
+    
+    // Restaurant Configuration (Settings, Schedule, etc.)
+    // Allow users to read and write their OWN configuration document.
+    match /restaurantConfig/{userId} {
+      // Grant read/write access if the requesting user's ID matches the document ID.
+      // This secures a user's settings, schedule, posUserId, etc.
+      allow read, write: if request.auth != null && request.auth.uid == userId;
 
-    match /products/{id}/{document=**} {
-        allow read: if true;
-    }
-
-    // Restaurant-specific configuration, readable/writable only by the owner
-    match /restaurantConfig/{userId}/{document=**} {
-      allow read, write: if request.auth.uid != null && request.auth.uid == userId;
+      // Allow anyone to read the "public" restaurant config document.
+      // This is used for the public booking page to get schedule and basic info.
+      // Make sure to set PUBLIC_RESTAURANT_ID in your app's config to point to a
+      // document ID that you want to be publicly readable (e.g., "mainRestaurant").
+      match /restaurantConfig/mainRestaurant {
+        allow get: if true;
+        // Explicitly deny list, create, update, delete for the public document to prevent writes.
+        allow list, create, update, delete: if false; 
+      }
     }
     
-    // A single public document for any user to see restaurant details.
-    // Explicitly prevent any writes from the client.
-    match /restaurantConfig/mainRestaurant {
-      allow get: if true;
-      allow list, create, update, delete: if false;
+    // Email templates are stored as a subcollection under a user's restaurantConfig
+    match /restaurantConfig/{userId}/emailTemplates/{templateId} {
+      allow read, write: if request.auth.uid == userId;
     }
 
-    // Bookings collection
+    // Bookings Collection
+    // Rules for managing who can create, read, update, or delete bookings.
     match /bookings/{bookingId} {
-        // Allow anyone to create a booking (for public page) but only if they set the ownerUID correctly to themselves.
-        allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
-        // Allow owner to manage their own booking entries
-        allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.ownerUID;
+      // Allow creation if the user is logged in AND the booking's ownerUID field matches their auth UID.
+      // This prevents users from creating bookings on behalf of others.
+      allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
+
+      // Allow read, update, delete ONLY if the logged-in user is the owner of the booking.
+      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.ownerUID;
     }
   }
 }

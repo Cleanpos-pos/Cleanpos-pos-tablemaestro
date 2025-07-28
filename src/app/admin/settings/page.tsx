@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, Search } from "lucide-react";
+import { Save, Settings as SettingsIcon, Clock, Users, CalendarDays, Percent, Image as ImageIcon, Building, Loader2, Search, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { CombinedSettings } from "@/lib/types";
 import Image from "next/image";
@@ -46,7 +47,11 @@ const restaurantProfileSchema = z.object({
   seoKeywords: z.string().max(250, "Keywords list is too long.").transform(val => val === "" ? null : val).nullable().optional(),
 });
 
-const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema);
+const posIntegrationSchema = z.object({
+    posUserId: z.string().max(100, "POS User ID is too long.").transform(val => val === "" ? null : val).nullable().optional(),
+});
+
+const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema).merge(posIntegrationSchema);
 
 const defaultSettingsData: CombinedSettings = {
   minAdvanceReservationHours: 2,
@@ -59,6 +64,7 @@ const defaultSettingsData: CombinedSettings = {
   seoH1: null,
   seoMetaDescription: null,
   seoKeywords: null,
+  posUserId: null,
 };
 
 export default function SettingsPage() {
@@ -99,6 +105,7 @@ export default function SettingsPage() {
             seoH1: settings.seoH1 ?? null,
             seoMetaDescription: settings.seoMetaDescription ?? null,
             seoKeywords: settings.seoKeywords ?? null,
+            posUserId: settings.posUserId ?? null,
         };
 
         form.reset(sanitizedSettings);
@@ -198,6 +205,7 @@ export default function SettingsPage() {
     settingsToSave.seoH1 = values.seoH1 ?? null;
     settingsToSave.seoMetaDescription = values.seoMetaDescription ?? null;
     settingsToSave.seoKeywords = values.seoKeywords ?? null;
+    settingsToSave.posUserId = values.posUserId ?? null;
 
     try {
       console.log("[settingsPage][onSubmit] Entering try block for uploads and save. Main imageFile:", imageFile ? imageFile.name : 'null');
@@ -306,6 +314,34 @@ export default function SettingsPage() {
                   render={() => <FormMessage />}
                 />
               </FormItem>
+            </CardContent>
+          </Card>
+
+           <Card className="shadow-lg rounded-xl form-interaction-animate">
+            <CardHeader>
+                <CardTitle className="font-headline flex items-center">
+                    <Link2 className="mr-3 h-6 w-6 text-primary" />
+                    POS Integration
+                </CardTitle>
+                <CardDescription className="font-body">
+                    Link this booking system to your multi-tenant POS system.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <FormField
+                    control={form.control}
+                    name="posUserId"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="font-body">POS System User ID</FormLabel>
+                            <FormControl>
+                                <Input {...field} value={field.value ?? ""} placeholder="Enter your User ID from the POS system" className="font-body" />
+                            </FormControl>
+                            <FormDescription>This ID is used to fetch the correct set of tables from your multi-tenant POS Firestore database.</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
             </CardContent>
           </Card>
 
