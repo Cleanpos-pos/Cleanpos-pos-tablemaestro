@@ -1,3 +1,4 @@
+
 # Firebase Studio
 
 This is a NextJS starter in Firebase Studio.
@@ -7,7 +8,7 @@ To get started, take a look at src/app/page.tsx.
 ## Important: Firestore Security Rules & Indexes
 
 ### Security Rules
-To ensure your application functions correctly and securely, you **MUST** configure your Firestore security rules in the Firebase console.
+To ensure your application functions correctly and securely, you **MUST** configure your Firestore security rules in the Firebase console. **This is the most common cause of errors in the app.**
 
 An example set of rules is provided in the `firestore.rules` file in the root of this project. Review this example and adapt it to your needs. **You must copy the contents of `firestore.rules` and deploy them in your Firebase project.**
 
@@ -19,12 +20,15 @@ An example set of rules is provided in the `firestore.rules` file in the root of
 5. Paste it into the rules editor in the Firebase Console, overwriting any existing rules.
 6. Click **Publish**.
 
+**Failure to set up appropriate security rules will result in "Permission Denied" errors when your application tries to read or write data.**
+
 **Key considerations for your `firestore.rules`:**
 
-1.  **Stripe Payments**: The rules allow users to create checkout sessions and read their own subscription data. This is critical for the payment flow to work.
+1.  **Public Data**: The homepage and public booking pages need to read configuration from a "public" restaurant document (e.g., `restaurantConfig/mainRestaurant`). The rules allow public `get` access to this document.
     ```firestore
-    match /customers/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    match /restaurantConfig/mainRestaurant {
+      allow get: if true;
+      allow list, create, update, delete: if false; // Prevent public writes
     }
     ```
 
@@ -35,15 +39,7 @@ An example set of rules is provided in the `firestore.rules` file in the root of
     }
     ```
 
-3.  **Public Data**: The homepage and public booking pages may need to read configuration from a "public" restaurant document (e.g., `restaurantConfig/mainRestaurant`). The rules allow public `get` access to this document.
-    ```firestore
-    match /restaurantConfig/mainRestaurant {
-      allow get: if true;
-      allow list, create, update, delete: if false; // Prevent public writes
-    }
-    ```
-
-4.  **Bookings Data**: The `bookings` collection stores booking information. The rules ensure that owners can only manage their own bookings.
+3.  **Bookings Data**: The `bookings` collection stores booking information. The rules ensure that owners can only manage their own bookings.
     ```firestore
     match /bookings/{bookingId} {
       allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
@@ -51,7 +47,13 @@ An example set of rules is provided in the `firestore.rules` file in the root of
     }
     ```
 
-**Failure to set up appropriate security rules will result in "Permission Denied" errors when your application tries to read or write data.**
+4.  **Stripe Payments**: The rules allow users to create checkout sessions and read their own subscription data. This is critical for the payment flow to work.
+    ```firestore
+    match /customers/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    ```
+
 
 ### Firestore Indexes
 As your application queries Firestore, you may encounter errors indicating that "The query requires an index." This means Firestore needs a composite index to efficiently process a specific query involving filters and sorts on multiple fields.

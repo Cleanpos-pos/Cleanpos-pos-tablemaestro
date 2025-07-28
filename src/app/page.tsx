@@ -9,17 +9,23 @@ import type { CombinedSettings } from "@/lib/types";
 
 export default async function HomePage() {
   let settings: CombinedSettings | null = null;
+  let errorState = false;
   
   try {
     settings = await getPublicRestaurantSettings();
   } catch (error) {
+    errorState = true;
     console.error("--------------------------------------------------------------------");
-    console.error("ERROR FETCHING PUBLIC RESTAURANT SETTINGS FOR HOMEPAGE:");
-    console.error("This is likely a Firestore Security Rules issue.");
-    console.error("Please ensure your Firestore rules allow public read access to the document:");
-    console.error("`restaurantConfig/mainRestaurant` (or your configured PUBLIC_RESTAURANT_ID).");
-    console.error("Refer to the Firebase console -> Firestore Database -> Rules.");
-    console.error("Error details:", error);
+    console.error("CRITICAL ERROR: FAILED TO FETCH PUBLIC RESTAURANT SETTINGS.");
+    console.error("This is a Firestore Security Rules issue. Your homepage cannot display public information.");
+    console.error("\nSOLUTION: You MUST deploy the security rules provided in the `firestore.rules` file.");
+    console.error("1. Open the `firestore.rules` file in your project.");
+    console.error("2. Copy its entire contents.");
+    console.error("3. Go to your Firebase Console -> Firestore Database -> Rules tab.");
+    console.error("4. Paste the contents into the editor, overwriting the existing rules.");
+    console.error("5. Click 'Publish'.");
+    console.error("\nThe specific rule needed for the homepage is `allow get: if true;` for the `restaurantConfig/mainRestaurant` path.");
+    console.error("\nOriginal Error Details:", error);
     console.error("--------------------------------------------------------------------");
     // Gracefully degrade: gallery and restaurant name will be empty or default
   }
@@ -89,7 +95,7 @@ export default async function HomePage() {
       <footer className="mt-12 text-center text-muted-foreground text-sm font-body">
         <p>&copy; {new Date().getFullYear()} Table Maestro V2. All rights reserved.</p>
         {settings?.restaurantName && <p className="text-xs">Proudly serving: {settings.restaurantName}</p>}
-        {settings === null && <p className="text-xs text-destructive">Restaurant name could not be loaded.</p>}
+        {errorState && <p className="text-xs text-destructive">Public restaurant name could not be loaded due to a permission error.</p>}
       </footer>
     </div>
   );
