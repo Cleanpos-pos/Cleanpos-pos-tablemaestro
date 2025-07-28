@@ -44,7 +44,6 @@ export default function TableManagementPage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [areas, setAreas] = useState<string[]>(["All"]);
-  const [newArea, setNewArea] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -68,12 +67,13 @@ export default function TableManagementPage() {
       ]);
       setTables(fetchedTables);
       setBookings(fetchedBookings);
+      // Dynamically generate areas from fetched tables
       const uniqueAreas = ["All", ...Array.from(new Set(fetchedTables.map(t => t.location).filter(Boolean) as string[]))];
       setAreas(uniqueAreas);
     } catch (error) {
       console.error("Failed to fetch tables or bookings:", error);
       let errorMessage = `Could not retrieve data: ${error instanceof Error ? error.message : String(error)}.`;
-       if (error instanceof Error && error.message.includes("Firestore Security Rules")) {
+       if (error instanceof Error && (error.message.includes("Firestore Security Rules") || error.message.includes("insufficient permissions"))) {
         errorMessage = `Could not retrieve tables from the POS database due to a permissions issue. Please ensure your POS project's Firestore rules allow reads from this application. Full Error: ${error.message}`;
       }
       toast({
@@ -100,14 +100,6 @@ export default function TableManagementPage() {
     });
     return () => unsubscribe();
   }, [fetchData]);
-
-  const handleAddNewArea = () => {
-    if (newArea && !areas.includes(newArea)) {
-      setAreas([...areas, newArea]);
-      setNewArea("");
-      toast({ title: "Area Added", description: `Area "${newArea}" is now available for table assignment.` });
-    }
-  };
 
   const handleFormSubmit = () => {
     setIsFormOpen(false);
@@ -196,34 +188,6 @@ export default function TableManagementPage() {
         </div>
       </div>
       
-      <Card className="shadow-lg rounded-xl">
-        <CardHeader>
-          <CardTitle className="font-headline">Table Areas</CardTitle>
-          <CardDescription className="font-body">Define the different areas or sections of your restaurant.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2 items-center">
-            {areas.filter(a => a !== 'All').map(area => (
-              <Badge key={area} variant="secondary" className="text-base py-1 px-3 bg-green-100 text-green-800 border-green-200">{area}</Badge>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-4 max-w-sm">
-            <Input
-              value={newArea}
-              onChange={(e) => setNewArea(e.target.value)}
-              placeholder="e.g., Patio, Bar, Rooftop"
-              className="font-body"
-            />
-            <Button onClick={handleAddNewArea}><PlusCircle className="mr-2 h-4 w-4" /> Add Area</Button>
-          </div>
-        </CardContent>
-         <CardFooter>
-            <p className="text-xs text-muted-foreground font-body">
-              These areas will be available in the 'Location' dropdown when adding or editing a table.
-            </p>
-          </CardFooter>
-      </Card>
-
       <Tabs defaultValue="All" className="w-full">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
             <div className="flex items-center gap-4">
