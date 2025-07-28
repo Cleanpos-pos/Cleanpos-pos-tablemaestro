@@ -19,6 +19,7 @@ import {
   writeBatch,
   Firestore,
 } from 'firebase/firestore';
+// I will fetch getRestaurantSettings directly here to avoid stale data.
 import { getRestaurantSettings } from './settingsService';
 
 const TABLES_COLLECTION = 'tables';
@@ -44,25 +45,30 @@ const getTablesCollectionRef = async () => {
     throw new Error("User not authenticated to access tables.");
   }
 
+  // Check for POS DB connection first
   if (posDb) {
-    console.log("[tableService] POS Firestore database is connected.");
+    console.log("[tableService] POS Firestore database is available. Checking settings for POS User ID...");
+    
+    // Always fetch the latest settings to ensure we have the most recent posUserId.
+    // This avoids issues with cached settings.
     const settings = await getRestaurantSettings();
     const posUserId = settings.posUserId;
 
     if (posUserId) {
-      // Path for multi-tenant POS system: /restaurants/{posUserId}/tables
       const path = `${RESTAURANTS_COLLECTION_POS}/${posUserId}/${TABLES_COLLECTION}`;
-      console.log(`[tableService] Using multi-tenant POS path: ${path}`);
+      console.log(`[tableService] SUCCESS: POS User ID "${posUserId}" found. Using multi-tenant POS path: "${path}"`);
       return collection(posDb as Firestore, path);
     } else {
-      console.warn("[tableService] POS DB is connected, but no POS User ID is set in settings. Falling back to simple 'tables' collection in POS DB.");
-      // Fallback for single-tenant POS or if linking is not set up
-      return collection(posDb as Firestore, TABLES_COLLECTION);
+      console.warn(`[tableService] WARNING: POS DB is connected, but no POS User ID is set in the latest settings. Falling back to the main app's database. Please check your settings page.`);
     }
+  } else {
+     console.log("[tableService] INFO: POS database not connected. Using main app's Firestore for tables.");
   }
   
-  console.log("[tableService] POS database not connected. Falling back to main app's Firestore for tables.");
-  return collection(db, `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`);
+  // Fallback to the primary database if posDb is not connected or if posUserId is not set.
+  const fallbackPath = `restaurantConfig/${user.uid}/${TABLES_COLLECTION}`;
+  console.log(`[tableService] Using fallback path in primary database: "${fallbackPath}"`);
+  return collection(db, fallbackPath);
 };
 
 
@@ -71,6 +77,7 @@ export const getTables = async (): Promise<Table[]> => {
     const tablesCollectionRef = await getTablesCollectionRef();
     const q = query(tablesCollectionRef, orderBy('name', 'asc'));
     const querySnapshot = await getDocs(q);
+    console.log(`[tableService] Fetched ${querySnapshot.docs.length} tables from the determined collection.`);
     return querySnapshot.docs.map(mapDocToTable);
   } catch (error) {
     console.error("Error fetching tables: ", error);
