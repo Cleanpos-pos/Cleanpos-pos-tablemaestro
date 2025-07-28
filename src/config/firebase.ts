@@ -14,9 +14,9 @@ const primaryFirebaseConfig = {
 };
 
 const posFirebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_POS_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_POS_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_POS_FIREBASE_PROJECT_ID,
+  apiKey: process.env.NEXT_PUBLIC_POS_FIREBASE_APIKEY,
+  authDomain: process.env.NEXT_PUBLIC_POS_FIREBASE_AUTHDOMAIN,
+  projectId: process.env.NEXT_PUBLIC_POS_FIREBASE_PROJECTID,
   storageBucket: process.env.NEXT_PUBLIC_POS_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_POS_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_POS_FIREBASE_APP_ID,
@@ -61,7 +61,7 @@ if (missingKeys.length === 0) {
         console.log('[FirebaseConfig] Secondary (POS) Firebase app already initialized.');
     }
 } else {
-    console.warn(`[FirebaseConfig] Secondary (POS) Firebase config not found or is incomplete. Table integration will be disabled. Missing required keys in .env: ${missingKeys.map(k => `NEXT_PUBLIC_POS_FIREBASE_${k.replace('Firebase','_FIREBASE_').toUpperCase()}`).join(', ')}`);
+    console.warn(`[FirebaseConfig] Secondary (POS) Firebase config not found or is incomplete. Table integration will be disabled. Missing required keys in .env: ${missingKeys.map(k => `NEXT_PUBLIC_POS_FIREBASE_${k.toUpperCase()}`).join(', ')}`);
 }
 
 
