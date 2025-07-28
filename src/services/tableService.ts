@@ -26,11 +26,12 @@ const FALLBACK_TABLES_COLLECTION = 'tables';
 
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
-  console.log(`[tableService] Mapping doc ${docSnap.id}, data:`, data);
+  console.log(`[tableService][mapDocToTable] Mapping doc ${docSnap.id}. Raw data:`, JSON.stringify(data));
   
-  let internalStatus: TableStatus = 'unavailable';
+  let internalStatus: TableStatus = 'unavailable'; // Default status
   if (data.status && typeof data.status === 'string') {
-    switch (data.status.toLowerCase()) {
+    const statusLower = data.status.toLowerCase();
+    switch (statusLower) {
       case 'available':
         internalStatus = 'available';
         break;
@@ -52,15 +53,18 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
     }
   }
 
-  return {
+  const mappedTable = {
     id: docSnap.id,
     name: data.name || `Unnamed Table ${docSnap.id}`,
-    capacity: data.capacity || 1, // Default capacity to 1 if not present
+    capacity: data.capacity || 1,
     status: internalStatus,
     location: data.areaId || '', // Map areaId to location
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
+
+  console.log(`[tableService][mapDocToTable] Mapped object for doc ${docSnap.id}:`, JSON.stringify(mappedTable));
+  return mappedTable;
 };
 
 

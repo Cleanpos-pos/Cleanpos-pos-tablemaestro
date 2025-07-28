@@ -74,10 +74,8 @@ export default function TableManagementPage() {
     } catch (error) {
       console.error("Failed to fetch tables or bookings:", error);
       let errorMessage = `Could not retrieve data: ${error instanceof Error ? error.message : String(error)}.`;
-       if (error instanceof Error && (error.message.includes("Firestore Security Rules") || error.message.includes("insufficient permissions"))) {
-        errorMessage = `Could not retrieve tables from the POS database due to a permissions issue. Please ensure your POS project's Firestore rules allow reads from this application. Full Error: ${error.message}`;
-      } else if (error instanceof Error && error.message.includes("Failed to fetch tables from the POS database")) {
-        errorMessage = error.message; // Use the specific error from the service
+       if (error instanceof Error && (error.message.includes("Firestore Security Rules") || error.message.includes("insufficient permissions") || error.message.includes("Failed to fetch tables from the POS database"))) {
+        errorMessage = `Could not retrieve tables from the POS database. This is likely a Firestore Security Rules issue on your POS project, or the POS Store ID in your settings is incorrect. Please ensure your POS project's Firestore rules allow reads from this application and that the Store ID is correct. Full Error: ${error.message}`;
       }
       toast({
         title: "Error Loading Data",
