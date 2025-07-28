@@ -56,10 +56,10 @@ const getTablesCollectionRef = async () => {
 
     if (posUserId) {
       const path = `${RESTAURANTS_COLLECTION_POS}/${posUserId}/${TABLES_COLLECTION}`;
-      console.log(`[tableService] SUCCESS: POS User ID "${posUserId}" found. Using multi-tenant POS path: "${path}"`);
+      console.log(`[tableService] SUCCESS: POS User ID "${posUserId}" found in settings. Using multi-tenant POS path: "${path}"`);
       return collection(posDb as Firestore, path);
     } else {
-      console.warn(`[tableService] WARNING: POS DB is connected, but no POS User ID is set in the latest settings. Falling back to the main app's database. Please check your settings page.`);
+      console.warn(`[tableService] WARNING: POS DB is connected, but no POS User ID is set in the latest settings. Falling back to the main app's database. Please go to the Settings page and enter your POS User ID.`);
     }
   } else {
      console.log("[tableService] INFO: POS database not connected. Using main app's Firestore for tables.");
@@ -77,7 +77,7 @@ export const getTables = async (): Promise<Table[]> => {
     const tablesCollectionRef = await getTablesCollectionRef();
     const q = query(tablesCollectionRef, orderBy('name', 'asc'));
     const querySnapshot = await getDocs(q);
-    console.log(`[tableService] Fetched ${querySnapshot.docs.length} tables from the determined collection.`);
+    console.log(`[tableService] Fetched ${querySnapshot.docs.length} tables from the collection at path: "${tablesCollectionRef.path}".`);
     return querySnapshot.docs.map(mapDocToTable);
   } catch (error) {
     console.error("Error fetching tables: ", error);
@@ -184,3 +184,4 @@ export const batchUpdateTableStatuses = async (tableIds: string[], status: Table
   });
   await batch.commit();
 };
+
