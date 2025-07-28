@@ -48,7 +48,7 @@ const restaurantProfileSchema = z.object({
 });
 
 const posIntegrationSchema = z.object({
-    posUserId: z.string().max(100, "POS User ID is too long.").transform(val => val === "" ? null : val).nullable().optional(),
+    posStoreId: z.string().max(100, "POS Store ID is too long.").transform(val => val === "" ? null : val).nullable().optional(),
 });
 
 const combinedSettingsSchema = reservationSettingsSchema.merge(restaurantProfileSchema).merge(posIntegrationSchema);
@@ -64,7 +64,7 @@ const defaultSettingsData: CombinedSettings = {
   seoH1: null,
   seoMetaDescription: null,
   seoKeywords: null,
-  posUserId: null,
+  posStoreId: null,
 };
 
 export default function SettingsPage() {
@@ -105,7 +105,7 @@ export default function SettingsPage() {
             seoH1: settings.seoH1 ?? null,
             seoMetaDescription: settings.seoMetaDescription ?? null,
             seoKeywords: settings.seoKeywords ?? null,
-            posUserId: settings.posUserId ?? null,
+            posStoreId: settings.posStoreId ?? null,
         };
 
         form.reset(sanitizedSettings);
@@ -205,7 +205,7 @@ export default function SettingsPage() {
     settingsToSave.seoH1 = values.seoH1 ?? null;
     settingsToSave.seoMetaDescription = values.seoMetaDescription ?? null;
     settingsToSave.seoKeywords = values.seoKeywords ?? null;
-    settingsToSave.posUserId = values.posUserId ?? null;
+    settingsToSave.posStoreId = values.posStoreId ?? null;
 
     try {
       console.log("[settingsPage][onSubmit] Entering try block for uploads and save. Main imageFile:", imageFile ? imageFile.name : 'null');
@@ -330,12 +330,12 @@ export default function SettingsPage() {
             <CardContent className="space-y-6">
                 <FormField
                     control={form.control}
-                    name="posUserId"
+                    name="posStoreId"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel className="font-body">POS System User ID</FormLabel>
+                            <FormLabel className="font-body">POS System Store ID</FormLabel>
                             <FormControl>
-                                <Input {...field} value={field.value ?? ""} placeholder="Enter your User ID from the POS system" className="font-body" />
+                                <Input {...field} value={field.value ?? ""} placeholder="Enter your Store ID from the POS system" className="font-body" />
                             </FormControl>
                             <FormDescription>This ID is used to fetch the correct set of tables from your multi-tenant POS Firestore database.</FormDescription>
                             <FormMessage />

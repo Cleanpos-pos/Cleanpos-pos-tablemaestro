@@ -62,7 +62,7 @@ export interface PlanSettings {
 }
 
 export interface PosIntegrationSettings {
-    posUserId?: string | null; // The User ID from the external POS system
+    posStoreId?: string | null; // The Store ID from the external POS system
 }
 
 
