@@ -29,23 +29,24 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
   
   // Convert POS status (e.g., "Available") to internal status (e.g., "available")
-  const posStatus = data.status || 'Available';
   let internalStatus: TableStatus = 'available';
-  switch (posStatus.toLowerCase()) {
-    case 'available':
-      internalStatus = 'available';
-      break;
-    case 'occupied':
-      internalStatus = 'occupied';
-      break;
-    case 'reserved':
-      internalStatus = 'reserved';
-      break;
-    case 'needscleaning': // Correctly handle "NeedsCleaning"
-      internalStatus = 'cleaning';
-      break;
-    default:
-      internalStatus = 'unavailable';
+  if (data.status && typeof data.status === 'string') {
+    switch (data.status.toLowerCase()) {
+      case 'available':
+        internalStatus = 'available';
+        break;
+      case 'occupied':
+        internalStatus = 'occupied';
+        break;
+      case 'reserved':
+        internalStatus = 'reserved';
+        break;
+      case 'needscleaning':
+        internalStatus = 'cleaning';
+        break;
+      default:
+        internalStatus = 'unavailable';
+    }
   }
 
   return {
@@ -66,18 +67,19 @@ const getTablesCollectionRef = async () => {
   if (!user) {
     throw new Error("User not authenticated to access tables.");
   }
-
+  
   if (posDb) {
-    const settings = await getRestaurantSettings();
-    const posStoreId = settings.posStoreId;
+      console.log("[tableService] POS Firestore database is available. Checking settings for a POS Store ID...");
+      const settings = await getRestaurantSettings();
+      const posStoreId = settings.posStoreId;
 
-    if (posStoreId) {
-      const path = `${POS_ROOT_COLLECTION}/${posStoreId}/${POS_SUB_COLLECTION}`;
-      console.log(`[tableService] SUCCESS: POS Store ID "${posStoreId}" found. Using POS path: "${path}"`);
-      return collection(posDb as Firestore, path);
-    } else {
-      console.warn(`[tableService] WARNING: POS DB is connected, but no POS Store ID is set. Falling back to the main app's database.`);
-    }
+      if (posStoreId && posStoreId.trim() !== "") {
+        const path = `${POS_ROOT_COLLECTION}/${posStoreId}/${POS_SUB_COLLECTION}`;
+        console.log(`[tableService] SUCCESS: POS Store ID "${posStoreId}" found. Using POS path: "${path}"`);
+        return collection(posDb as Firestore, path);
+      } else {
+        console.log(`[tableService] INFO: POS DB is connected, but no POS Store ID is configured in settings. Falling back to the main app's database.`);
+      }
   } else {
      console.log("[tableService] INFO: POS database not connected. Using main app's Firestore for tables.");
   }
@@ -96,8 +98,9 @@ export const getTables = async (): Promise<Table[]> => {
     console.log(`[tableService] Fetched ${querySnapshot.docs.length} documents from the collection at path: "${tablesCollectionRef.path}".`);
     return querySnapshot.docs.map(mapDocToTable);
   } catch (error) {
-    console.error("Error fetching tables: ", error);
-    if (posDb && (await getRestaurantSettings()).posStoreId) {
+    console.error(`[tableService] Error during getTables execution:`, error);
+    const settings = await getRestaurantSettings();
+    if (posDb && settings.posStoreId) {
         throw new Error(`Failed to fetch tables from the connected POS database. Check Firestore rules and collection path. Original error: ${error instanceof Error ? error.message : String(error)}`);
     }
     throw error;
@@ -119,7 +122,15 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
     };
     
     if (isUsingPosDb) {
+        // POS uses 'areaId' and expects statuses like 'Available'
         dataToSave.areaId = tableData.location || null;
+        switch(tableData.status) {
+            case 'available': dataToSave.status = 'Available'; break;
+            case 'occupied': dataToSave.status = 'Occupied'; break;
+            case 'reserved': dataToSave.status = 'Reserved'; break;
+            case 'cleaning': dataToSave.status = 'NeedsCleaning'; break;
+            default: dataToSave.status = 'Unavailable';
+        }
     } else {
         dataToSave.location = tableData.location || null;
         dataToSave.ownerUID = user.uid;
@@ -149,6 +160,15 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
       if ('location' in dataToUpdate) {
         dataToUpdate.areaId = dataToUpdate.location;
         delete dataToUpdate.location;
+      }
+      if ('status' in dataToUpdate) {
+        switch(dataToUpdate.status) {
+            case 'available': dataToUpdate.status = 'Available'; break;
+            case 'occupied': dataToUpdate.status = 'Occupied'; break;
+            case 'reserved': dataToUpdate.status = 'Reserved'; break;
+            case 'cleaning': dataToUpdate.status = 'NeedsCleaning'; break;
+            default: dataToUpdate.status = 'Unavailable';
+        }
       }
     }
 
