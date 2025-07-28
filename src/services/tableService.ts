@@ -1,5 +1,4 @@
 
-
 import { db, auth, posDb } from '@/config/firebase';
 import type { Table, TableInput, TableUpdateData, TableStatus } from '@/lib/types';
 import {
@@ -25,12 +24,12 @@ const POS_ROOT_COLLECTION = 'stores';
 const POS_SUB_COLLECTION = 'tables'; 
 const FALLBACK_TABLES_COLLECTION = 'tables'; 
 
+// This function now correctly maps the POS table document to the app's Table type.
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
-  console.log(`[tableService][mapDocToTable] Processing document ID: ${docSnap.id}. Raw data from POS DB:`, JSON.stringify(data));
   
   // Convert POS status (e.g., "Available") to internal status (e.g., "available")
-  const posStatus = data.status || 'available';
+  const posStatus = data.status || 'Available';
   let internalStatus: TableStatus = 'available';
   switch (posStatus.toLowerCase()) {
     case 'available':
@@ -42,19 +41,17 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
     case 'reserved':
       internalStatus = 'reserved';
       break;
-    case 'needscleaning':
+    case 'needscleaning': // Correctly handle "NeedsCleaning"
       internalStatus = 'cleaning';
       break;
     default:
-      // Fallback for any other statuses from POS we don't handle explicitly yet
       internalStatus = 'unavailable';
   }
-
 
   return {
     id: docSnap.id,
     name: data.name || `Unnamed Table ${docSnap.id}`,
-    capacity: data.capacity || 1, 
+    capacity: data.capacity || 1, // Default to 1 if capacity is missing
     status: internalStatus,
     location: data.areaId || '', // Map 'areaId' from POS to 'location' in our app
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
@@ -63,6 +60,7 @@ const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
 };
 
 
+// This function robustly determines the correct collection reference.
 const getTablesCollectionRef = async () => {
   const user = auth.currentUser;
   if (!user) {
@@ -70,17 +68,15 @@ const getTablesCollectionRef = async () => {
   }
 
   if (posDb) {
-    console.log("[tableService] POS Firestore database is available. Checking settings for POS Store ID...");
-    
     const settings = await getRestaurantSettings();
     const posStoreId = settings.posStoreId;
 
     if (posStoreId) {
       const path = `${POS_ROOT_COLLECTION}/${posStoreId}/${POS_SUB_COLLECTION}`;
-      console.log(`[tableService] SUCCESS: POS Store ID "${posStoreId}" found in settings. Using multi-tenant POS path: "${path}"`);
+      console.log(`[tableService] SUCCESS: POS Store ID "${posStoreId}" found. Using POS path: "${path}"`);
       return collection(posDb as Firestore, path);
     } else {
-      console.warn(`[tableService] WARNING: POS DB is connected, but no POS Store ID is set in the latest settings. Falling back to the main app's database. Please go to the Settings page and enter your POS Store ID.`);
+      console.warn(`[tableService] WARNING: POS DB is connected, but no POS Store ID is set. Falling back to the main app's database.`);
     }
   } else {
      console.log("[tableService] INFO: POS database not connected. Using main app's Firestore for tables.");
@@ -101,7 +97,7 @@ export const getTables = async (): Promise<Table[]> => {
     return querySnapshot.docs.map(mapDocToTable);
   } catch (error) {
     console.error("Error fetching tables: ", error);
-    if (posDb) {
+    if (posDb && (await getRestaurantSettings()).posStoreId) {
         throw new Error(`Failed to fetch tables from the connected POS database. Check Firestore rules and collection path. Original error: ${error instanceof Error ? error.message : String(error)}`);
     }
     throw error;
@@ -114,27 +110,23 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
     const user = auth.currentUser; 
     if (!user) throw new Error("User not authenticated.");
 
+    const isUsingPosDb = tablesCollectionRef.firestore === posDb;
+    
     const dataToSave: { [key: string]: any } = { 
       name: tableData.name,
       capacity: tableData.capacity,
       status: tableData.status,
-      areaId: tableData.location || undefined, // map our location back to areaId for POS
     };
-    Object.keys(dataToSave).forEach(key => {
-      if (dataToSave[key] === undefined) {
-        delete dataToSave[key];
-      }
-    });
-
-    const finalData = { ...dataToSave };
-    if (!posDb) {
-        finalData.ownerUID = user.uid;
-        delete finalData.areaId; // Don't save areaId to fallback DB
-        finalData.location = tableData.location; // Save location to fallback DB
+    
+    if (isUsingPosDb) {
+        dataToSave.areaId = tableData.location || null;
+    } else {
+        dataToSave.location = tableData.location || null;
+        dataToSave.ownerUID = user.uid;
     }
 
     const docRef = await addDoc(tablesCollectionRef, {
-      ...finalData,
+      ...dataToSave,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -150,20 +142,15 @@ export const updateTable = async (tableId: string, tableData: TableUpdateData): 
     const tablesCollectionRef = await getTablesCollectionRef();
     const tableRef = doc(tablesCollectionRef, tableId);
     
+    const isUsingPosDb = tablesCollectionRef.firestore === posDb;
     const dataToUpdate: { [key: string]: any } = { ...tableData };
     
-    if (posDb) {
+    if (isUsingPosDb) {
       if ('location' in dataToUpdate) {
         dataToUpdate.areaId = dataToUpdate.location;
         delete dataToUpdate.location;
       }
     }
-
-    Object.keys(dataToUpdate).forEach(key => {
-      if (dataToUpdate[key] === undefined) {
-        delete dataToUpdate[key];
-      }
-    });
 
     await updateDoc(tableRef, {
       ...dataToUpdate, 
@@ -210,7 +197,7 @@ export const getOccupancyRate = async (): Promise<number> => {
 
 export const batchUpdateTableStatuses = async (tableIds: string[], status: TableStatus): Promise<void> => {
   const tablesCollectionRef = await getTablesCollectionRef();
-  const batch = writeBatch(posDb || db); 
+  const batch = writeBatch(tablesCollectionRef.firestore); 
 
   tableIds.forEach(tableId => {
     const tableRef = doc(tablesCollectionRef, tableId);
@@ -218,4 +205,3 @@ export const batchUpdateTableStatuses = async (tableIds: string[], status: Table
   });
   await batch.commit();
 };
-
