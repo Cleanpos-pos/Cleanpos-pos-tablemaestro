@@ -19,7 +19,6 @@ import {
   writeBatch,
   Firestore,
 } from 'firebase/firestore';
-// I will fetch getRestaurantSettings directly here to avoid stale data.
 import { getRestaurantSettings } from './settingsService';
 
 const POS_ROOT_COLLECTION = 'stores'; 
@@ -28,14 +27,14 @@ const FALLBACK_TABLES_COLLECTION = 'tables';
 
 const mapDocToTable = (docSnap: QueryDocumentSnapshot<DocumentData>): Table => {
   const data = docSnap.data();
-  // In the POS data, a "table" is an "area". We map the fields.
-  // 'location' can be mapped from 'storeId' for context if needed.
+  console.log(`[tableService][mapDocToTable] Processing document ID: ${docSnap.id}. Raw data:`, JSON.stringify(data));
+  
   return {
     id: docSnap.id,
-    name: data.name,
-    capacity: data.capacity || 1, // POS data might not have capacity, default to 1
-    status: data.status || 'available', // POS data might not have status, default to available
-    location: data.storeId || '', // The 'location' is the storeId in the POS data
+    name: data.name || `Unnamed Table ${docSnap.id}`, // Fallback if 'name' is missing
+    capacity: data.capacity || 1, // Default to 1 if 'capacity' is missing
+    status: data.status || 'available', // Default to 'available' if 'status' is missing
+    location: data.location || '', // Use location field if it exists, otherwise empty
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
   } as Table;
@@ -48,7 +47,6 @@ const getTablesCollectionRef = async () => {
     throw new Error("User not authenticated to access tables.");
   }
 
-  // Check for POS DB connection first
   if (posDb) {
     console.log("[tableService] POS Firestore database is available. Checking settings for POS Store ID...");
     
@@ -66,7 +64,6 @@ const getTablesCollectionRef = async () => {
      console.log("[tableService] INFO: POS database not connected. Using main app's Firestore for tables.");
   }
   
-  // Fallback to the primary database if posDb is not connected or if posStoreId is not set.
   const fallbackPath = `restaurantConfig/${user.uid}/${FALLBACK_TABLES_COLLECTION}`;
   console.log(`[tableService] Using fallback path in primary database: "${fallbackPath}"`);
   return collection(db, fallbackPath);
@@ -76,8 +73,6 @@ const getTablesCollectionRef = async () => {
 export const getTables = async (): Promise<Table[]> => {
   try {
     const tablesCollectionRef = await getTablesCollectionRef();
-    // The POS 'areas' collection might not be sorted by name, so we sort it here if needed.
-    // However, the original query had orderBy('name'), let's assume the 'name' field exists on the 'areas' documents.
     const q = query(tablesCollectionRef, orderBy('name', 'asc'));
     const querySnapshot = await getDocs(q);
     console.log(`[tableService] Fetched ${querySnapshot.docs.length} documents from the collection at path: "${tablesCollectionRef.path}".`);
@@ -105,7 +100,6 @@ export const addTable = async (tableData: TableInput): Promise<string> => {
     });
 
     const finalData = { ...dataToSave };
-    // We don't add ownerUID when writing to a shared POS database
     if (!posDb) {
         finalData.ownerUID = user.uid;
     }
