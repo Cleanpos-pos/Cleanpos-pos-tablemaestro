@@ -1,66 +1,38 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Stripe Customer and Subscription Data
-    // Rules from the "Run Payments with Stripe" Firebase Extension documentation.
-    // This allows users to read their own customer and subscription data, and to
-    // create checkout sessions for themselves. It prevents users from accessing
-    // other users' payment information.
-    match /customers/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-
-      match /checkout_sessions/{id} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
-      }
-      match /subscriptions/{id} {
-        allow read: if request.auth != null && request.auth.uid == uid;
-      }
+    // Customers and their payment-related info
+    match /customers/{uid}/{document=**} {
+      allow read, write: if request.auth.uid != null && request.auth.uid == uid;
     }
 
-    // Public-facing product and pricing information synced from Stripe.
-    // This allows any user (authenticated or not) to read the list of available
-    // products and their prices, which is necessary for the pricing page.
-    match /products/{id} {
+    // Public-readable products and prices synced from Stripe
+    match /subscription/{id}/{document=**} {
       allow read: if true;
-      
-      match /prices/{id} {
+    }
+
+    match /products/{id}/{document=**} {
         allow read: if true;
-      }
     }
-    
-    // Restaurant Configuration Data
-    // This collection stores settings, schedules, and tables for each restaurant owner.
-    // The rule ensures that only the authenticated owner can read or write their own configuration.
+
+    // Restaurant-specific configuration, readable/writable only by the owner
     match /restaurantConfig/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth.uid != null && request.auth.uid == userId;
     }
     
-    // Public Restaurant Settings (for homepage, booking page, etc.)
-    // This allows public read-only access to a specific document containing the
-    // general information for the restaurant, like its name and branding.
+    // A single public document for any user to see restaurant details.
+    // Explicitly prevent any writes from the client.
     match /restaurantConfig/mainRestaurant {
       allow get: if true;
-      allow list, create, update, delete: if false; // Prevent public writes
+      allow list, create, update, delete: if false;
     }
 
-    // Bookings Data
-    // This ensures that new bookings are created with the correct owner UID, and that
-    // owners can only manage bookings that belong to them.
+    // Bookings collection
     match /bookings/{bookingId} {
-      // Allow creation if the new booking's ownerUID matches the person making the request
-      allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
-      // Allow read, update, delete if the logged-in user is the owner of the booking
-      allow read, update, delete: if request.auth != null && resource.data.ownerUID == request.auth.uid;
-    }
-    
-    // Forum Posts
-    // This ensures users can only create posts as themselves, and can only see their own posts.
-    match /forumPosts/{postId} {
+        // Allow anyone to create a booking (for public page) but only if they set the ownerUID correctly to themselves.
         allow create: if request.auth != null && request.resource.data.ownerUID == request.auth.uid;
-        allow read: if request.auth != null && resource.data.ownerUID == request.auth.uid;
-        allow update, delete: if false; // Disallow updates/deletes for now.
+        // Allow owner to manage their own booking entries
+        allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.ownerUID;
     }
   }
 }
