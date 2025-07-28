@@ -71,6 +71,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
   const isEditMode = !!existingBooking;
   const [tables, setTables] = useState<Table[]>([]);
   const [isLoadingTables, setIsLoadingTables] = useState(true);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const defaultValues: Partial<AdminBookingFormValues> = {
     guestName: existingBooking?.guestName || "",
@@ -233,7 +234,7 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
             render={({ field }) => (
               <FormItem className="flex flex-col">
                 <FormLabel className="font-body mb-1 flex items-center"><CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />Date</FormLabel>
-                <Popover>
+                <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button
@@ -252,7 +253,10 @@ export default function AdminBookingForm({ existingBooking }: AdminBookingFormPr
                     <Calendar
                       mode="single"
                       selected={field.value}
-                      onSelect={field.onChange}
+                      onSelect={(date) => {
+                        field.onChange(date);
+                        setIsDatePickerOpen(false);
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
