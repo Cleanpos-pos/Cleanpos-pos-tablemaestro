@@ -92,47 +92,40 @@ export default function LoginForm() {
     } catch (error: any) {
       console.error("[LoginForm] Firebase login error raw object:", error);
       let errorMessage = "Login failed. Please check your credentials and try again."; // Default message
-      let errorCategory = "generic";
-
+      
       if (error && error.code) {
         console.log(`[LoginForm] Firebase login attempt failed with error code: ${error.code}`);
-        if (error.code === 'auth/visibility-check-was-unavailable') {
-          errorMessage = "Login check failed. This might be due to browser settings (e.g., blocked cookies if in an iframe) or network issues. Please ensure cookies are enabled for Firebase, try a different browser/incognito mode, and then retry logging in.";
-          errorCategory = "visibility-check";
-        } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-email') {
-          errorMessage = "Invalid email or password. Please try again.";
-          errorCategory = "invalid-credentials";
-        } else if (error.code === 'auth/too-many-requests') {
-          errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
-          errorCategory = "too-many-requests";
-        } else if (error.code === 'auth/network-request-failed') {
-          errorMessage = "Network error. Please check your internet connection and try again.";
-          errorCategory = "network-error";
-        } else if (error.code === 'auth/user-disabled') {
-          errorMessage = "This user account has been disabled. Please contact support.";
-          errorCategory = "user-disabled";
-        } else if (error.code === 'auth/operation-not-allowed') {
-          errorMessage = "Email/password sign-in is not enabled for this Firebase project. Please enable it in the Firebase console (Authentication > Sign-in method).";
-          errorCategory = "operation-not-allowed";
-        } else if (error.code === 'auth/missing-continue-uri') {
-          errorMessage = "A continue URL must be provided in the request for certain operations.";
-          errorCategory = "missing-continue-uri";
+        switch (error.code) {
+          case 'auth/invalid-credential':
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+          case 'auth/invalid-email':
+            errorMessage = "Invalid email or password. Please try again.";
+            break;
+          case 'auth/too-many-requests':
+            errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
+            break;
+          case 'auth/network-request-failed':
+            errorMessage = "Network error. Please check your internet connection and try again.";
+            break;
+          case 'auth/user-disabled':
+            errorMessage = "This user account has been disabled. Please contact support.";
+            break;
+          case 'auth/operation-not-allowed':
+             errorMessage = "Email/password sign-in is not enabled for this Firebase project. Please enable it in the Firebase console (Authentication > Sign-in method).";
+             break;
+          default:
+            // Keep the generic message for other unexpected Firebase errors
+            break;
         }
-      } else {
-        console.log("[LoginForm] Firebase login attempt failed with an error that has no 'code' property or error object is null/undefined.");
       }
-
-      console.log(`[LoginForm] Login error category determined as: ${errorCategory}, resulting message: "${errorMessage}"`);
 
       toast({
         title: "Login Failed",
         description: errorMessage,
         variant: "destructive",
       });
-      if (errorCategory === "invalid-credentials" || errorCategory === "generic") {
-        form.setError("email", { type: "manual", message: " " }); // Clear specific message to avoid redundancy with toast
-        form.setError("password", { type: "manual", message: " " });// Clear specific message
-      }
+      // Clear password field on any failed attempt for security
       form.setValue("password","");
     }
   }
