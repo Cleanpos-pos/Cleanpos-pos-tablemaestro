@@ -32,7 +32,7 @@ If you are integrating with an external POS system on a separate Firebase projec
 3.  Add the following `match` block to allow this booking application to read your tables. This is safe as it only allows read-only access.
     ```firestore
     // Add this block inside the `match /databases/{database}/documents { ... }` block
-    match /restaurants/{restaurantId}/tables/{tableId} {
+    match /stores/{storeId}/tables/{tableId} {
       allow read: if true; // Allows the booking app to read table data
       allow write: if false; // Protects your data from being changed by the public
     }
@@ -83,4 +83,3 @@ Common areas that might require indexes:
 - Fetching tables with specific properties.
 
 Always check your Firebase console for index creation prompts if you see query-related permission errors or performance issues.
-
