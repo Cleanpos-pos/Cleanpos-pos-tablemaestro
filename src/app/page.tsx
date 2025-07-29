@@ -1,11 +1,12 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus, Camera } from "lucide-react";
+import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus, Camera, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getPublicRestaurantSettings } from "@/services/settingsService";
 import type { CombinedSettings } from "@/lib/types";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default async function HomePage() {
   let settings: CombinedSettings | null = null;
@@ -33,6 +34,21 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-8">
       <div className="space-y-8 w-full max-w-md">
+
+        {errorState && (
+            <Alert variant="destructive" className="shadow-lg">
+                <AlertTriangle className="h-5 w-5" />
+                <AlertTitle className="font-headline text-lg">Configuration Error: Action Required</AlertTitle>
+                <AlertDescription className="font-body space-y-2 mt-2">
+                    <p>The application could not load public restaurant details due to a "Missing or insufficient permissions" error from Firestore.</p>
+                    <p>
+                        <strong>To fix this,</strong> you must update your Firestore security rules. Please open the <strong>`firestore.rules`</strong> file in your project, copy its contents, and paste them into the <strong>Rules</strong> tab of your Firestore Database in the Firebase Console.
+                    </p>
+                     <p className="text-xs">The required rule for this page is: <code className="bg-destructive/20 p-1 rounded-sm">match /restaurantConfig/mainRestaurant {'{'} allow get: if true; {'}'}</code></p>
+                </AlertDescription>
+            </Alert>
+        )}
+
         <Card className="shadow-2xl rounded-xl overflow-hidden">
           <CardHeader className="bg-primary text-center p-8">
             <div className="flex justify-center mb-4">
@@ -86,7 +102,7 @@ export default async function HomePage() {
             </Link>
              <p className="text-xs text-center text-muted-foreground font-body">
               Start managing your restaurant bookings efficiently today!
-            </p>
+             </p>
           </CardContent>
         </Card>
 
