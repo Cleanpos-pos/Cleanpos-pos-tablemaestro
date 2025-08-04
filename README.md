@@ -5,6 +5,20 @@ This is a NextJS starter in Firebase Studio.
 
 To get started, take a look at src/app/page.tsx.
 
+## Environment Variables
+
+For full functionality, you must set up your environment variables in the `.env` file.
+
+- **`BREVO_API_KEY`**: This is required for sending transactional emails (e.g., booking confirmations).
+  1. Create a free account at [Brevo.com](https://www.brevo.com/).
+  2. Navigate to the "SMTP & API" section in your Brevo account dashboard.
+  3. Generate a new API key.
+  4. Copy the key and paste it into the `BREVO_API_KEY` field in your `.env` file.
+  5. The default sender is `info@posso.uk`. For your emails to work, you must add and verify this domain/sender in your Brevo account.
+
+A server restart might be required after adding or changing API keys in the `.env` file.
+
+
 ## Important: Firestore Security Rules & Indexes
 
 ### Security Rules
@@ -63,5 +77,3 @@ When this error occurs, Firestore typically provides a direct link in the error 
 Common areas that might require indexes:
 - Fetching bookings sorted by date/time with filters (`ownerUID`).
 - Fetching tables with specific properties.
-
-Always check your Firebase console for index creation prompts if you see query-related permission errors or performance issues.

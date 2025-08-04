@@ -2,6 +2,7 @@
 'use server';
 /**
  * @fileOverview A service for sending transactional emails via Brevo API.
+ * This service requires a BREVO_API_KEY to be set in the .env file.
  */
 import { getPublicRestaurantSettings } from '@/services/settingsService';
 import type { CombinedSettings } from '@/lib/types';
