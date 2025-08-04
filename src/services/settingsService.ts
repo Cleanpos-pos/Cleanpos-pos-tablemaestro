@@ -26,7 +26,6 @@ const defaultCombinedSettings: CombinedSettings = {
   seoMetaDescription: null,
   seoKeywords: null,
   plan: 'starter',
-  posStoreId: null,
 };
 
 const defaultTimeSlot: TimeSlot = { name: 'Dinner', startTime: '17:00', endTime: '22:00' };
@@ -72,7 +71,6 @@ export const saveRestaurantSettings = async (settings: Partial<CombinedSettings>
     dataToSave.seoH1 = settings.seoH1 ?? (dataToSave.seoH1 || null);
     dataToSave.seoMetaDescription = settings.seoMetaDescription ?? (dataToSave.seoMetaDescription || null);
     dataToSave.seoKeywords = settings.seoKeywords ?? (dataToSave.seoKeywords || null);
-    dataToSave.posStoreId = settings.posStoreId ?? (dataToSave.posStoreId || null);
 
 
     await setDoc(settingsRef, {
@@ -112,7 +110,6 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
         seoMetaDescription: data.seoMetaDescription ?? defaultCombinedSettings.seoMetaDescription,
         seoKeywords: data.seoKeywords ?? defaultCombinedSettings.seoKeywords,
         plan: data.plan ?? defaultCombinedSettings.plan,
-        posStoreId: data.posStoreId ?? defaultCombinedSettings.posStoreId,
       };
 
       if (settingsDocId === PUBLIC_RESTAURANT_ID) {

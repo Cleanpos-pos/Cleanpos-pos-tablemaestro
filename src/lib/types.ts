@@ -61,13 +61,8 @@ export interface PlanSettings {
     plan?: string | null;
 }
 
-export interface PosIntegrationSettings {
-    posStoreId?: string | null; // The Store ID from the external POS system
-}
-
-
 // Combined type for the settings page form
-export type CombinedSettings = ReservationSettings & RestaurantProfileSettings & PlanSettings & PosIntegrationSettings;
+export type CombinedSettings = ReservationSettings & RestaurantProfileSettings & PlanSettings;
 
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning' | 'unavailable' | 'pending';
 
@@ -115,4 +110,3 @@ export interface ForumPost {
 }
 
 export type ForumPostInput = Omit<ForumPost, 'id' | 'createdAt' | 'ownerUID' | 'status' | 'ownerEmail'>;
-

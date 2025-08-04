@@ -22,24 +22,6 @@ An example set of rules is provided in the `firestore.rules` file in the root of
 
 **Failure to set up appropriate security rules will result in "Permission Denied" errors when your application tries to read or write data.**
 
-### POS System Integration Rules
-
-If you are integrating with an external POS system on a separate Firebase project, you **MUST** also update the security rules on that **POS project**. This application needs permission to read table data from the other project.
-
-**To deploy the rules for the EXTERNAL POS project:**
-1.  Go to the Firebase Console for your **POS project**.
-2.  Navigate to **Firestore Database** -> **Rules**.
-3.  Add the following `match` block to allow this booking application to read your tables. This is safe as it only allows read-only access.
-    ```firestore
-    // Add this block inside the `match /databases/{database}/documents { ... }` block
-    match /stores/{storeId}/tables/{tableId} {
-      allow read: if true; // Allows the booking app to read table data
-      allow write: if false; // Protects your data from being changed by the public
-    }
-    ```
-4.  Click **Publish**. Failure to do this will result in a "Missing or insufficient permissions" error when the app tries to fetch tables.
-
-
 ### Key considerations for your `firestore.rules`:
 
 1.  **Public Data**: The homepage and public booking pages need to read configuration from a "public" restaurant document (e.g., `restaurantConfig/mainRestaurant`). The rules allow public `get` access to this document.
