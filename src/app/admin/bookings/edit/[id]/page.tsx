@@ -20,9 +20,8 @@ import {
   type BookingEmailParams
 } from "@/app/actions/emailActions";
 import { addCommunicationNoteAction } from "@/app/actions/bookingActions";
-import { getRestaurantSettings } from "@/services/settingsService";
 import { Badge } from "@/components/ui/badge";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 
 export default function EditBookingPage() {
   const params = useParams();
@@ -32,18 +31,7 @@ export default function EditBookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [adminRestaurantName, setAdminRestaurantName] = useState<string>("My Restaurant");
   const { toast } = useToast();
-
-  const fetchAdminRestaurantName = useCallback(async () => {
-    try {
-      const settings = await getRestaurantSettings();
-      setAdminRestaurantName(settings?.restaurantName || "My Restaurant");
-    } catch (err) {
-      console.error("[EditBookingPage] Error fetching admin's restaurant name:", err);
-      setAdminRestaurantName("My Restaurant"); // Fallback
-    }
-  }, []);
 
   const fetchBookingData = useCallback(async (userId: string) => {
       setError(null);
@@ -72,15 +60,14 @@ export default function EditBookingPage() {
           setError("Booking not found.");
           setBooking(null);
         }
-        await fetchAdminRestaurantName();
       } catch (err) {
-        console.error("[EditBookingPage] Failed to fetch booking or admin name:", err);
+        console.error("[EditBookingPage] Failed to fetch booking:", err);
         setError(err instanceof Error ? err.message : "An unknown error occurred while fetching data.");
         setBooking(null);
       } finally {
         setIsLoading(false);
       }
-  }, [bookingId, fetchAdminRestaurantName]);
+  }, [bookingId]);
 
 
   useEffect(() => {
@@ -92,15 +79,13 @@ export default function EditBookingPage() {
         if (!user) {
             setError("User not authenticated.");
             setBooking(null);
-            // Optional: redirect to login if you want to be strict
-            // router.push('/admin/login');
         } else if (!bookingId) {
             setError("No booking ID provided.");
         }
       }
     });
     return () => unsubscribe();
-  }, [bookingId, fetchBookingData, router]);
+  }, [bookingId, fetchBookingData]);
 
 
   const handleSendBookingRelatedEmail = async (type: 'no-availability' | 'waiting-list' | 'confirmation') => {
@@ -129,7 +114,6 @@ export default function EditBookingPage() {
     const emailParams: BookingEmailParams = {
       recipientEmail: booking.guestEmail,
       adminUserUID: auth.currentUser.uid,
-      adminRestaurantName: adminRestaurantName,
       bookingDetails: {
         guestName: booking.guestName,
         date: booking.date, 

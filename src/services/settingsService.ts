@@ -2,13 +2,11 @@
 
 import { db, auth } from '@/config/firebase';
 import type { CombinedSettings, RestaurantSchedule, DaySchedule, TimeSlot } from '@/lib/types';
-import { PUBLIC_RESTAURANT_ID } from '@/config/constants';
 import {
   doc,
   setDoc,
   getDoc,
   serverTimestamp,
-  Timestamp,
 } from 'firebase/firestore';
 
 const SETTINGS_COLLECTION = 'restaurantConfig';
@@ -87,12 +85,7 @@ export const saveRestaurantSettings = async (settings: Partial<CombinedSettings>
 
 export const getSettingsById = async (settingsDocId: string): Promise<CombinedSettings> => {
   const settingsPath = `${SETTINGS_COLLECTION}/${settingsDocId}`;
-  
-  if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-    console.log(`[settingsService][getSettingsById] Attempting to fetch PUBLIC restaurant settings from doc ID: ${settingsDocId} (Path: ${settingsPath})`);
-  } else {
-    console.log(`[settingsService][getSettingsById] Fetching settings for user/doc ID: ${settingsDocId} (Path: ${settingsPath})`);
-  }
+  console.log(`[settingsService][getSettingsById] Fetching settings for user/doc ID: ${settingsDocId} (Path: ${settingsPath})`);
 
   try {
     const settingsRef = doc(db, SETTINGS_COLLECTION, settingsDocId);
@@ -111,20 +104,12 @@ export const getSettingsById = async (settingsDocId: string): Promise<CombinedSe
         seoKeywords: data.seoKeywords ?? defaultCombinedSettings.seoKeywords,
         plan: data.plan ?? defaultCombinedSettings.plan,
       };
-
-      if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-        console.log(`[settingsService][getSettingsById] Found PUBLIC restaurant settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
-      } else {
-        console.log(`[settingsService][getSettingsById] Found USER settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
-      }
+      
+      console.log(`[settingsService][getSettingsById] Found USER settings document (${settingsPath}). Effective restaurantName: "${mergedSettings.restaurantName}" (from DB: "${data.restaurantName}", default: "${defaultCombinedSettings.restaurantName}")`);
       return mergedSettings;
     } else {
       const notFoundMsg = `[settingsService][getSettingsById] Settings document NOT FOUND for path ${settingsPath}. Returning default settings (restaurantName: "${defaultCombinedSettings.restaurantName}").`;
-      if (settingsDocId === PUBLIC_RESTAURANT_ID) {
-        console.warn(`${notFoundMsg} You should create this document for public-facing details.`);
-      } else {
-         console.warn(`${notFoundMsg} This user may need to save their settings first.`);
-      }
+       console.warn(`${notFoundMsg} This user may need to save their settings first.`);
       return { ...defaultCombinedSettings }; 
     }
   } catch (error) {
@@ -142,11 +127,6 @@ export const getRestaurantSettings = async (): Promise<CombinedSettings> => {
   }
   console.log(`[settingsService][getRestaurantSettings] Authenticated user found: ${user.uid}. Fetching their specific settings.`);
   return getSettingsById(user.uid);
-};
-
-export const getPublicRestaurantSettings = async (): Promise<CombinedSettings> => {
-  console.log("[settingsService][getPublicRestaurantSettings] Fetching public restaurant settings.");
-  return getSettingsById(PUBLIC_RESTAURANT_ID);
 };
 
 
@@ -214,6 +194,9 @@ export const getRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
   return getScheduleById(user.uid);
 };
 
-export const getPublicRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
-  return getScheduleById(PUBLIC_RESTAURANT_ID);
-};
+// This function is no longer applicable in a multi-tenant architecture
+// as there is no single "public" schedule. Each restaurant's schedule
+// is tied to its owner's UID.
+// export const getPublicRestaurantSchedule = async (): Promise<RestaurantSchedule> => {
+//   return getScheduleById(PUBLIC_RESTAURANT_ID);
+// };

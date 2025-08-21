@@ -11,18 +11,19 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import type { CombinedSettings } from '@/lib/types';
-import { getPublicRestaurantSettings } from '@/services/settingsService'; // Changed to getPublicRestaurantSettings
+import { getSettingsById } from '@/services/settingsService';
+import { auth } from '@/config/firebase';
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 const DEFAULT_SENDER_EMAIL = 'info@posso.uk';
-const DEFAULT_FALLBACK_RESTAURANT_NAME = "My Restaurant"; // Consistent fallback
+const DEFAULT_FALLBACK_RESTAURANT_NAME = "My Restaurant";
 
 const SendEmailInputSchema = z.object({
   to: z.string().email().describe('The recipient\'s email address.'),
   subject: z.string().describe('The subject line of the email.'),
   htmlContent: z.string().describe('The HTML content of the email body.'),
-  senderName: z.string().optional().describe(`Optional sender name. Defaults to public restaurant name or "${DEFAULT_FALLBACK_RESTAURANT_NAME}".`),
-  senderEmail: z.string().email().optional().describe(`Optional sender email. Defaults to ${DEFAULT_SENDER_EMAIL}. Must be a verified sender in Brevo.`),
+  // In a multi-tenant app, ownerUID is crucial to fetch the correct settings.
+  ownerUID: z.string().optional().describe('The UID of the restaurant owner to fetch settings for. Defaults to the currently authenticated user.'),
 });
 export type SendEmailInput = z.infer<typeof SendEmailInputSchema>;
 
@@ -34,15 +35,22 @@ const SendEmailOutputSchema = z.object({
 export type SendEmailOutput = z.infer<typeof SendEmailOutputSchema>;
 
 
-async function getDynamicSenderInfo(): Promise<{name: string, email: string}> {
+async function getDynamicSenderInfo(ownerId: string | undefined): Promise<{name: string, email: string}> {
+    const user = auth.currentUser;
+    const targetOwnerId = ownerId || user?.uid;
+
+    if (!targetOwnerId) {
+        console.warn("[sendEmailFlow] No ownerUID provided and no user is authenticated. Cannot fetch tenant-specific sender name. Using default.");
+        return { name: DEFAULT_FALLBACK_RESTAURANT_NAME, email: DEFAULT_SENDER_EMAIL };
+    }
+
     try {
-        // Use public settings for the sender name to ensure consistency for all emails.
-        const settings: CombinedSettings | null = await getPublicRestaurantSettings();
+        const settings: CombinedSettings | null = await getSettingsById(targetOwnerId);
         const restaurantName = settings?.restaurantName || DEFAULT_FALLBACK_RESTAURANT_NAME;
 
         return { name: restaurantName, email: DEFAULT_SENDER_EMAIL };
     } catch (error) {
-        console.warn("[sendEmailFlow] Could not fetch public restaurant settings for sender name, using default. Error:", error);
+        console.warn(`[sendEmailFlow] Could not fetch settings for owner ${targetOwnerId} to get sender name, using default. Error:`, error);
         return { name: DEFAULT_FALLBACK_RESTAURANT_NAME, email: DEFAULT_SENDER_EMAIL };
     }
 }
@@ -61,14 +69,12 @@ const sendEmailFlow = ai.defineFlow(
       console.error('BREVO_API_KEY is not set in environment variables.');
       return { success: false, error: 'Email service is not configured (missing API key).' };
     }
-
-    const dynamicSender = await getDynamicSenderInfo();
-    const resolvedSenderEmail = input.senderEmail || dynamicSender.email;
-    const resolvedSenderName = input.senderName || dynamicSender.name;
-
+    
+    // The sender name is now dynamically fetched based on the owner of the content.
+    const dynamicSender = await getDynamicSenderInfo(input.ownerUID);
 
     const payload = {
-      sender: { email: resolvedSenderEmail, name: resolvedSenderName },
+      sender: { email: dynamicSender.email, name: dynamicSender.name },
       to: [{ email: input.to }],
       subject: input.subject,
       htmlContent: input.htmlContent,
@@ -76,12 +82,11 @@ const sendEmailFlow = ai.defineFlow(
 
     try {
       // Enhanced logging
-      console.log(`[sendEmailFlow] Preparing to send email.`);
+      console.log(`[sendEmailFlow] Preparing to send email for owner: ${input.ownerUID || 'authed_user'}.`);
       console.log(`[sendEmailFlow] To: ${payload.to[0].email}`);
       console.log(`[sendEmailFlow] Subject: ${payload.subject.substring(0, 100)}...`);
       console.log(`[sendEmailFlow] Sender: ${payload.sender.name} <${payload.sender.email}>`);
-      console.log(`[sendEmailFlow] HTML Content (first 100 chars): ${payload.htmlContent.substring(0, 100)}...`);
-
+      
       const response = await fetch(BREVO_API_URL, {
         method: 'POST',
         headers: {
@@ -113,4 +118,3 @@ const sendEmailFlow = ai.defineFlow(
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailOutput> {
   return sendEmailFlow(input);
 }
-

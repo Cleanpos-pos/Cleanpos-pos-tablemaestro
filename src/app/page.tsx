@@ -1,54 +1,13 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus, Camera, AlertTriangle } from "lucide-react";
+import { Utensils, LogIn, CalendarPlus, Rocket, UserPlus } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
-import { getPublicRestaurantSettings } from "@/services/settingsService";
-import type { CombinedSettings } from "@/lib/types";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default async function HomePage() {
-  let settings: CombinedSettings | null = null;
-  let errorState = false;
-  
-  try {
-    settings = await getPublicRestaurantSettings();
-  } catch (error) {
-    errorState = true;
-    console.error("--------------------------------------------------------------------");
-    console.error("CRITICAL ERROR: FAILED TO FETCH PUBLIC RESTAURANT SETTINGS.");
-    console.error("This is a Firestore Security Rules issue. Your homepage cannot display public information.");
-    console.error("\nSOLUTION: You MUST deploy the security rules provided in the `firestore.rules` file.");
-    console.error("1. Open the `firestore.rules` file in your project.");
-    console.error("2. Copy its entire contents.");
-    console.error("3. Go to your Firebase Console -> Firestore Database -> Rules tab.");
-    console.error("4. Paste the contents into the editor, overwriting the existing rules.");
-    console.error("5. Click 'Publish'.");
-    console.error("\nThe specific rule needed for the homepage is `allow get: if true;` for the `restaurantConfig/mainRestaurant` path.");
-    console.error("\nOriginal Error Details:", error);
-    console.error("--------------------------------------------------------------------");
-    // Gracefully degrade: gallery and restaurant name will be empty or default
-  }
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-8">
       <div className="space-y-8 w-full max-w-md">
-
-        {errorState && (
-            <Alert variant="destructive" className="shadow-lg">
-                <AlertTriangle className="h-5 w-5" />
-                <AlertTitle className="font-headline text-lg">Configuration Error: Action Required</AlertTitle>
-                <AlertDescription className="font-body space-y-2 mt-2">
-                    <p>The application could not load public restaurant details due to a "Missing or insufficient permissions" error from Firestore.</p>
-                    <p>
-                        <strong>To fix this,</strong> you must update your Firestore security rules. Please open the <strong>`firestore.rules`</strong> file in your project, copy its contents, and paste them into the <strong>Rules</strong> tab of your Firestore Database in the Firebase Console.
-                    </p>
-                     <p className="text-xs">The required rule for this page is: <code className="bg-destructive/20 p-1 rounded-sm">match /restaurantConfig/mainRestaurant {'{'} allow get: if true; {'}'}</code></p>
-                </AlertDescription>
-            </Alert>
-        )}
-
         <Card className="shadow-2xl rounded-xl overflow-hidden">
           <CardHeader className="bg-primary text-center p-8">
             <div className="flex justify-center mb-4">
@@ -61,22 +20,25 @@ export default async function HomePage() {
           </CardHeader>
           <CardContent className="p-8 space-y-6">
             <p className="text-center text-muted-foreground font-body">
-              Welcome to Table Maestro V2. Choose your path below to get started.
+              Welcome to Table Maestro V2. Login to manage your restaurant or sign up to get started.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Link href="/public/booking" passHref>
-                <Button variant="default" className="w-full h-12 text-base btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground">
-                  <CalendarPlus className="mr-2 h-5 w-5" />
-                  Make a Reservation
-                </Button>
-              </Link>
               <Link href="/admin/login" passHref>
-                <Button variant="outline" className="w-full h-12 text-base btn-subtle-animate">
+                <Button variant="default" className="w-full h-12 text-base btn-subtle-animate bg-accent hover:bg-accent/90 text-accent-foreground">
                   <LogIn className="mr-2 h-5 w-5" />
                   Admin Login
                 </Button>
               </Link>
+               <Link href="/pricing" passHref>
+                <Button variant="outline" className="w-full h-12 text-base btn-subtle-animate">
+                   <UserPlus className="mr-2 h-5 w-5" />
+                   Sign Up
+                </Button>
+              </Link>
             </div>
+             <p className="text-xs text-center text-muted-foreground font-body">
+              Note: The public booking page is disabled on the main landing page for a multi-tenant setup. Each restaurant will have its own unique booking page.
+             </p>
           </CardContent>
         </Card>
 
@@ -110,8 +72,6 @@ export default async function HomePage() {
 
       <footer className="mt-12 text-center text-muted-foreground text-sm font-body">
         <p>&copy; {new Date().getFullYear()} Table Maestro V2. All rights reserved.</p>
-        {settings?.restaurantName && <p className="text-xs">Proudly serving: {settings.restaurantName}</p>}
-        {errorState && <p className="text-xs text-destructive">Public restaurant name could not be loaded due to a permission error.</p>}
       </footer>
     </div>
   );

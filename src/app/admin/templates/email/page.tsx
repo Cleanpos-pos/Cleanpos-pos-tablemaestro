@@ -34,7 +34,7 @@ import {
   UPGRADE_PLAN_TEMPLATE_ID,
   defaultUpgradePlanPlaceholders
 } from "@/services/templateService";
-import { getRestaurantSettings } from "@/services/settingsService"; // To fetch admin's own restaurant name
+import { getRestaurantSettings } from "@/services/settingsService";
 import { auth } from "@/config/firebase";
 import { sendTestEmailAction } from "@/app/actions/emailActions";
 import {
@@ -133,7 +133,7 @@ export default function EmailTemplatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUserAuthenticated, setIsUserAuthenticated] = useState(false);
-  const [currentAdminRestaurantName, setCurrentAdminRestaurantName] = useState<string>("My Restaurant"); // Default
+  const [currentAdminRestaurantName, setCurrentAdminRestaurantName] = useState<string>("My Restaurant");
   const [currentTemplateId, setCurrentTemplateId] = useState<string>(templateConfigurations[0].id);
   const [currentPlaceholders, setCurrentPlaceholders] = useState<string[]>(templateConfigurations[0].defaultPlaceholders);
   const [currentPlaceholderDetails, setCurrentPlaceholderDetails] = useState<Record<string, string>>(templateConfigurations[0].placeholderDetails);
@@ -154,7 +154,7 @@ export default function EmailTemplatePage() {
   const fetchCurrentAdminSettings = useCallback(async () => {
     if (auth.currentUser) {
       try {
-        const settings = await getRestaurantSettings(); // Fetches settings for the current user
+        const settings = await getRestaurantSettings(); 
         setCurrentAdminRestaurantName(settings?.restaurantName || "My Restaurant");
       } catch (error) {
         console.warn("Could not fetch admin's restaurant name for test emails, using default.", error);
@@ -198,7 +198,7 @@ export default function EmailTemplatePage() {
         setTestEmailAddress(user.email || ""); 
         setIsUserAuthenticated(true);
         fetchTemplate(currentTemplateId); 
-        fetchCurrentAdminSettings(); // Fetch admin's specific restaurant name
+        fetchCurrentAdminSettings();
       } else {
         setIsUserAuthenticated(false);
         setIsLoading(false);
@@ -275,12 +275,10 @@ export default function EmailTemplatePage() {
     });
 
     try {
-      // Pass the admin's UID and their specific restaurant name to the server action
       const result = await sendTestEmailAction(
         currentTemplateId, 
         testEmailAddress, 
-        currentUser.uid,
-        currentAdminRestaurantName // Pass the fetched admin-specific restaurant name
+        currentUser.uid
       );
       if (result.success) {
         toast({

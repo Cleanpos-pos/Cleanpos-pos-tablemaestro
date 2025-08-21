@@ -16,12 +16,10 @@ import {
   serverTimestamp,
   DocumentData,
   QueryDocumentSnapshot,
-  getDoc, // Added getDoc
-  type DocumentSnapshot, // Explicitly import DocumentSnapshot
-  FieldValue,
+  getDoc, 
+  type DocumentSnapshot, 
   arrayUnion,
 } from 'firebase/firestore';
-import { PUBLIC_RESTAURANT_ID } from '@/config/constants';
 import { getRestaurantSettings } from './settingsService';
 import { sendUpgradePlanEmailAction } from '@/app/actions/emailActions';
 import { startOfWeek, endOfWeek } from 'date-fns';
@@ -32,8 +30,6 @@ const BOOKINGS_COLLECTION = 'bookings';
 const mapDocToBooking = (docSnap: QueryDocumentSnapshot<DocumentData> | DocumentSnapshot<DocumentData>): Booking => {
   const data = docSnap.data();
   if (!data) {
-    // This case should ideally not happen if docSnap.exists() is checked before calling,
-    // but as a safeguard for type DocumentSnapshot which might not exist.
     throw new Error(`Document data not found for doc ID: ${docSnap.id}`);
   }
   return {
@@ -88,11 +84,16 @@ export const getBookingById = async (bookingId: string): Promise<Booking | null>
 
 export const addBookingToFirestore = async (bookingData: BookingInput): Promise<string> => {
   const user = auth.currentUser;
-  // If no user is logged in (i.e., a public booking), assign it to the public restaurant owner ID.
-  // Otherwise, assign it to the logged-in admin.
-  const ownerId = user ? user.uid : PUBLIC_RESTAURANT_ID;
+  // In a multi-tenant app, the ownerUID must be known. For guest-created bookings,
+  // this would need to be passed from the tenant-specific booking page.
+  // Admin-created bookings will use the logged-in admin's UID.
+  const ownerId = user ? user.uid : bookingData.ownerUID;
   
-  if (user) {
+  if (!ownerId) {
+      throw new Error("Cannot create booking: Owner ID is missing. Bookings must be associated with a restaurant.");
+  }
+
+  if (user) { // Only check for upgrades if an admin is logged in and creating a booking
       await checkAndNotifyForUpgrade(user.uid);
   }
 

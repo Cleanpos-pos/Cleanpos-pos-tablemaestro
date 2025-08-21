@@ -7,14 +7,10 @@ import {
     BOOKING_ACCEPTED_TEMPLATE_ID,
     NO_AVAILABILITY_TEMPLATE_ID,
     WAITING_LIST_TEMPLATE_ID,
-    UPGRADE_PLAN_TEMPLATE_ID,
-    defaultBookingAcceptedPlaceholders, 
-    defaultNoAvailabilityPlaceholders,
-    defaultWaitingListPlaceholders,
-    defaultUpgradePlanPlaceholders
+    UPGRADE_PLAN_TEMPLATE_ID
 } from '@/services/templateService';
 import { renderSimpleTemplate } from '@/lib/templateUtils';
-// getSettingsById is removed as adminRestaurantName is passed directly
+import { getSettingsById } from '@/services/settingsService';
 import { format, parseISO, isValid } from 'date-fns';
 
 interface ActionResult {
@@ -23,11 +19,15 @@ interface ActionResult {
 }
 
 // Dummy data generator for the main Email Templates admin page (test sends)
-function getDummyDataForTemplate(
+async function getDummyDataForTemplate(
   templateId: string, 
-  adminRestaurantName: string 
-): Record<string, any> {
+  adminUserUID: string 
+): Promise<Record<string, any>> {
   
+  // Fetch the admin's actual restaurant name for realistic test data
+  const adminSettings = await getSettingsById(adminUserUID);
+  const adminRestaurantName = adminSettings?.restaurantName || "My Restaurant";
+
   const commonData = {
     guestName: 'Test Guest',
     restaurantName: adminRestaurantName, 
@@ -70,7 +70,7 @@ function getDummyDataForTemplate(
             ...commonData,
             bookingLimit: 30,
             currentBookingCount: 25,
-        }
+        };
     default:
       return commonData;
   }
@@ -80,16 +80,12 @@ function getDummyDataForTemplate(
 export async function sendTestEmailAction(
   templateId: string,
   recipientEmail: string,
-  adminUserUID: string, 
-  adminRestaurantName: string 
+  adminUserUID: string
 ): Promise<ActionResult> {
-  console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}, adminUID: ${adminUserUID}, adminRestaurantName: "${adminRestaurantName}"`);
+  console.log(`[sendTestEmailAction] Initiated for templateId: ${templateId}, recipient: ${recipientEmail}, adminUID: ${adminUserUID}`);
 
   if (!adminUserUID) { 
     return { success: false, message: "Admin user ID is missing." };
-  }
-  if (!adminRestaurantName) {
-    return { success: false, message: "Restaurant name for the admin was not provided." };
   }
   if (!recipientEmail || !recipientEmail.includes('@')) {
     return { success: false, message: "Invalid recipient email address provided." };
@@ -101,7 +97,7 @@ export async function sendTestEmailAction(
       return { success: false, message: `Template "${templateId}" not found or is incomplete.` };
     }
     
-    const dummyData = getDummyDataForTemplate(templateId, adminRestaurantName); 
+    const dummyData = await getDummyDataForTemplate(templateId, adminUserUID); 
 
     const renderedSubject = renderSimpleTemplate(template.subject, dummyData);
     const renderedBody = renderSimpleTemplate(template.body, dummyData);
@@ -115,10 +111,13 @@ export async function sendTestEmailAction(
       to: recipientEmail,
       subject: renderedSubject,
       htmlContent: renderedBody,
-      senderName: adminRestaurantName, 
+      ownerUID: adminUserUID, // Pass owner UID to flow for correct sender name
     };
 
-    console.log(`[sendTestEmailAction] Calling sendEmail with input:`, {to: emailInput.to, subject: emailInput.subject.substring(0,50) + "...", senderName: emailInput.senderName});
+    const adminSettings = await getSettingsById(adminUserUID);
+    const adminRestaurantName = adminSettings?.restaurantName || "My Restaurant";
+
+    console.log(`[sendTestEmailAction] Calling sendEmail with input for owner ${adminUserUID}`);
     const result: SendEmailOutput = await sendEmail(emailInput);
 
     if (result.success) {
@@ -140,8 +139,7 @@ export async function sendTestEmailAction(
 
 export interface BookingEmailParams {
   recipientEmail: string;
-  adminUserUID: string; // Still useful for logging or future admin-specific logic
-  adminRestaurantName: string; // Passed from client
+  adminUserUID: string; 
   bookingDetails: {
     guestName: string;
     date: string; // YYYY-MM-DD string
@@ -151,21 +149,24 @@ export interface BookingEmailParams {
   };
 }
 
-export async function sendBookingConfirmationEmailAction(params: BookingEmailParams): Promise<ActionResult> {
-  const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
-  const templateId = BOOKING_ACCEPTED_TEMPLATE_ID;
-  console.log(`[sendBookingConfirmationEmailAction] Initiated for ${recipientEmail}, admin: ${adminUserUID}, booking guest: ${bookingDetails.guestName}`);
-
+// Reusable function to send a booking-related email
+async function sendBookingEmail(templateId: string, params: BookingEmailParams): Promise<ActionResult> {
+  const { recipientEmail, adminUserUID, bookingDetails } = params;
+  
   if (!recipientEmail || !recipientEmail.includes('@')) return { success: false, message: "Invalid recipient email." };
   if (!adminUserUID) return { success: false, message: "Admin user ID missing." };
-  if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
 
   try {
-    const template = await getEmailTemplate(templateId); 
+    const [template, adminSettings] = await Promise.all([
+      getEmailTemplate(templateId),
+      getSettingsById(adminUserUID)
+    ]);
+
     if (!template || !template.subject || !template.body) {
-      return { success: false, message: `"${templateId}" template not found or incomplete.` };
+      return { success: false, message: `Template "${templateId}" not found or incomplete.` };
     }
-    
+    const adminRestaurantName = adminSettings?.restaurantName || "My Restaurant";
+
     let formattedDate = 'N/A';
     if (bookingDetails.date) {
         try {
@@ -173,7 +174,7 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
             if (isValid(parsedDate)) {
                 formattedDate = format(parsedDate, 'MMMM d, yyyy');
             }
-        } catch (e) { console.warn(`Invalid date for Confirmation email: ${bookingDetails.date}`); }
+        } catch (e) { console.warn(`Invalid date for email: ${bookingDetails.date}`); }
     }
 
     const templateData: Record<string, any> = {
@@ -182,160 +183,64 @@ export async function sendBookingConfirmationEmailAction(params: BookingEmailPar
       bookingDate: formattedDate,
       bookingTime: bookingDetails.time,
       partySize: bookingDetails.partySize,
-      notes: bookingDetails.notes
-    };
-    
-    const subject = renderSimpleTemplate(template.subject, templateData);
-    
-    // Manually render the body to bypass issues with the conditional notes field.
-    let body = renderSimpleTemplate(template.body, templateData);
-    if (bookingDetails.notes && bookingDetails.notes.trim() !== '') {
-        // This is a robust way to handle the conditional part if the simple renderer fails
-        // We find the conditional block and replace it if it's still there.
-        const conditionalRegex = /\{\{#if\s+notes\}\}([\s\S]*?)\{\{\/if\s*\}\}/g;
-        if (conditionalRegex.test(body)) {
-             body = body.replace(conditionalRegex, renderSimpleTemplate('$1', templateData));
-        } else {
-            // If the template was changed and no longer has the #if block, we might append it.
-            // For now, we assume the notes placeholder is present.
-            // This part is a safety net; the main replacement is handled by renderSimpleTemplate.
-        }
-    } else {
-        // If no notes, ensure the conditional block is removed entirely.
-         const conditionalRegex = /\{\{#if\s+notes\}\}([\s\S]*?)\{\{\/if\s*\}\}/g;
-         body = body.replace(conditionalRegex, '');
-    }
-
-
-    if (!subject.trim() || !body.trim()) {
-      return { success: false, message: "Rendered subject or body is empty for confirmation. Check template and data." };
-    }
-
-    const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
-    const result = await sendEmail(emailInput);
-
-    return result.success 
-      ? { success: true, message: `Booking Confirmation email sent to ${recipientEmail}.` }
-      : { success: false, message: `Failed to send Booking Confirmation email: ${result.error || 'Unknown error'}` };
-
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : 'Unknown server error.';
-    console.error(`[sendBookingConfirmationEmailAction] Error:`, error);
-    return { success: false, message: `Error sending email: ${errMsg}` };
-  }
-}
-
-
-export async function sendNoAvailabilityEmailForBookingAction(params: BookingEmailParams): Promise<ActionResult> {
-  const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
-  const templateId = NO_AVAILABILITY_TEMPLATE_ID;
-  console.log(`[sendNoAvailabilityEmailForBookingAction] Initiated for ${recipientEmail}, admin: ${adminUserUID}, booking guest: ${bookingDetails.guestName}`);
-
-  if (!recipientEmail || !recipientEmail.includes('@')) return { success: false, message: "Invalid recipient email." };
-  if (!adminUserUID) return { success: false, message: "Admin user ID missing." };
-  if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
-
-
-  try {
-    const template = await getEmailTemplate(templateId);
-    if (!template || !template.subject || !template.body) {
-      return { success: false, message: `"${templateId}" template not found or incomplete.` };
-    }
-    
-    let formattedDate = 'N/A';
-    if (bookingDetails.date) {
-        try {
-            const parsedDate = parseISO(bookingDetails.date);
-            if (isValid(parsedDate)) {
-                formattedDate = format(parsedDate, 'MMMM d, yyyy');
-            }
-        } catch (e) { console.warn(`Invalid date for No Availability email: ${bookingDetails.date}`); }
-    }
-
-    const templateData = {
-      guestName: bookingDetails.guestName,
-      restaurantName: adminRestaurantName,
+      notes: bookingDetails.notes,
       requestedDate: formattedDate,
       requestedTime: bookingDetails.time,
       requestedPartySize: bookingDetails.partySize,
+      estimatedWaitTime: "Please contact us for current wait times.",
     };
-
+    
     const subject = renderSimpleTemplate(template.subject, templateData);
-    const body = renderSimpleTemplate(template.body, templateData);
+    let body = renderSimpleTemplate(template.body, templateData);
+
+    if (templateId === BOOKING_ACCEPTED_TEMPLATE_ID) {
+      const conditionalRegex = /\{\{#if\s+notes\}\}([\s\S]*?)\{\{\/if\s*\}\}/g;
+      if (bookingDetails.notes && bookingDetails.notes.trim() !== '') {
+          if (conditionalRegex.test(body)) {
+               body = body.replace(conditionalRegex, renderSimpleTemplate('$1', templateData));
+          }
+      } else {
+           body = body.replace(conditionalRegex, '');
+      }
+    }
 
     if (!subject.trim() || !body.trim()) {
       return { success: false, message: "Rendered subject or body is empty. Check template and data." };
     }
 
-    const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
+    const emailInput: SendEmailInput = { 
+      to: recipientEmail, 
+      subject, 
+      htmlContent: body, 
+      ownerUID: adminUserUID // Pass owner UID to flow for correct sender name
+    };
     const result = await sendEmail(emailInput);
 
     return result.success 
-      ? { success: true, message: `No Availability email sent to ${recipientEmail}.` }
-      : { success: false, message: `Failed to send No Availability email: ${result.error || 'Unknown error'}` };
+      ? { success: true, message: `Email sent to ${recipientEmail}.` }
+      : { success: false, message: `Failed to send email: ${result.error || 'Unknown error'}` };
 
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : 'Unknown server error.';
-    console.error(`[sendNoAvailabilityEmailForBookingAction] Error:`, error);
+    console.error(`[sendBookingEmail: ${templateId}] Error:`, error);
     return { success: false, message: `Error sending email: ${errMsg}` };
   }
 }
 
+
+export async function sendBookingConfirmationEmailAction(params: BookingEmailParams): Promise<ActionResult> {
+    console.log(`[sendBookingConfirmationEmailAction] Initiated for ${params.recipientEmail}`);
+    return sendBookingEmail(BOOKING_ACCEPTED_TEMPLATE_ID, params);
+}
+
+export async function sendNoAvailabilityEmailForBookingAction(params: BookingEmailParams): Promise<ActionResult> {
+    console.log(`[sendNoAvailabilityEmailForBookingAction] Initiated for ${params.recipientEmail}`);
+    return sendBookingEmail(NO_AVAILABILITY_TEMPLATE_ID, params);
+}
+
 export async function sendWaitingListEmailForBookingAction(params: BookingEmailParams): Promise<ActionResult> {
-  const { recipientEmail, adminUserUID, adminRestaurantName, bookingDetails } = params;
-  const templateId = WAITING_LIST_TEMPLATE_ID;
-  console.log(`[sendWaitingListEmailForBookingAction] Initiated for ${recipientEmail}, admin: ${adminUserUID}, booking guest: ${bookingDetails.guestName}`);
-
-  if (!recipientEmail || !recipientEmail.includes('@')) return { success: false, message: "Invalid recipient email." };
-  if (!adminUserUID) return { success: false, message: "Admin user ID missing." };
-  if (!adminRestaurantName) return { success: false, message: "Admin restaurant name missing."};
-
-  try {
-    const template = await getEmailTemplate(templateId);
-    if (!template || !template.subject || !template.body) {
-      return { success: false, message: `"${templateId}" template not found or incomplete.` };
-    }
-
-    let formattedDate = 'N/A';
-    if (bookingDetails.date) {
-        try {
-            const parsedDate = parseISO(bookingDetails.date);
-             if (isValid(parsedDate)) {
-                formattedDate = format(parsedDate, 'MMMM d, yyyy');
-            }
-        } catch (e) { console.warn(`Invalid date for Waiting List email: ${bookingDetails.date}`); }
-    }
-    
-    const templateData = {
-      guestName: bookingDetails.guestName,
-      restaurantName: adminRestaurantName,
-      requestedDate: formattedDate, 
-      bookingDate: formattedDate,   
-      requestedTime: bookingDetails.time, 
-      bookingTime: bookingDetails.time,   
-      partySize: bookingDetails.partySize,
-      estimatedWaitTime: "Please contact us for current wait times.", 
-    };
-
-    const subject = renderSimpleTemplate(template.subject, templateData);
-    const body = renderSimpleTemplate(template.body, templateData);
-    
-    if (!subject.trim() || !body.trim()) {
-      return { success: false, message: "Rendered subject or body is empty. Check template and data." };
-    }
-
-    const emailInput: SendEmailInput = { to: recipientEmail, subject, htmlContent: body, senderName: adminRestaurantName };
-    const result = await sendEmail( emailInput );
-
-    return result.success 
-      ? { success: true, message: `Waiting List email sent to ${recipientEmail}.` }
-      : { success: false, message: `Failed to send Waiting List email: ${result.error || 'Unknown error'}` };
-
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : 'Unknown server error.';
-    console.error(`[sendWaitingListEmailForBookingAction] Error:`, error);
-    return { success: false, message: `Error sending email: ${errMsg}` };
-  }
+    console.log(`[sendWaitingListEmailForBookingAction] Initiated for ${params.recipientEmail}`);
+    return sendBookingEmail(WAITING_LIST_TEMPLATE_ID, params);
 }
 
 
@@ -346,7 +251,11 @@ export async function sendUpgradePlanEmailAction(
     bookingLimit: number
 ): Promise<ActionResult> {
     const templateId = UPGRADE_PLAN_TEMPLATE_ID;
+    const user = auth.currentUser;
     console.log(`[sendUpgradePlanEmailAction] Initiated for ${recipientEmail}`);
+    if (!user) {
+        return { success: false, message: "Action requires an authenticated user." };
+    }
 
     try {
         const template = await getEmailTemplate(templateId);
@@ -363,7 +272,12 @@ export async function sendUpgradePlanEmailAction(
         const subject = renderSimpleTemplate(template.subject, templateData);
         const body = renderSimpleTemplate(template.body, templateData);
         
-        const result = await sendEmail({ to: recipientEmail, subject, htmlContent: body, senderName: restaurantName });
+        const result = await sendEmail({ 
+            to: recipientEmail, 
+            subject, 
+            htmlContent: body,
+            ownerUID: user.uid,
+        });
 
         if (result.success) {
             console.log(`[sendUpgradePlanEmailAction] Upgrade email sent successfully to ${recipientEmail}.`);

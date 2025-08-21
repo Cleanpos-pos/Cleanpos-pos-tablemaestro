@@ -2,23 +2,14 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
-import { getPublicRestaurantSettings } from '@/services/settingsService';
 
-// This function dynamically generates metadata for the page.
-export async function generateMetadata(): Promise<Metadata> {
-  // Fetch the public settings which include SEO fields.
-  const settings = await getPublicRestaurantSettings();
-
-  const title = settings?.seoH1 || settings?.restaurantName || 'Table Maestro V2';
-  const description = settings?.seoMetaDescription || 'Restaurant booking and waitlist optimization system.';
-  const keywords = settings?.seoKeywords?.split(',').map(k => k.trim()) || [];
-
-  return {
-    title: title,
-    description: description,
-    keywords: keywords,
-  };
-}
+// In a multi-tenant app, the root layout metadata should be generic
+// for the platform, not specific to one restaurant.
+export const metadata: Metadata = {
+  title: 'Table Maestro V2 - Restaurant Management',
+  description: 'The ultimate solution for restaurant booking and waitlist optimization.',
+  keywords: ['restaurant management', 'booking system', 'table management', 'waitlist'],
+};
 
 
 export default function RootLayout({
